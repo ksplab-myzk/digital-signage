@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+html, body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: black;
+}
+#vimeo {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+}
+#vimeo iframe {
+    width: 100vw !important;
+    height: 100vh !important;
+    position: absolute;
+    top: 0;
+    left: 0;
+}
+</style>
+</head>
+<body>
+
+<div id="vimeo"></div>
+
+<script src="https://player.vimeo.com/api/player.js"></script>
+<script>
+var player = new Vimeo.Player('vimeo', {
+    id: 769207276,
+    autoplay: true,
+    muted: true,
+    controls: false
+});
+
+// ★ 動画終了イベント
+player.on('ended', function() {
+    fetch("http://localhost:5001/ended");
+});
+</script>
+
+</body>
+</html>

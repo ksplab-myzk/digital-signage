@@ -1,0 +1,46 @@
+<html>
+<body style="background:#111; color:white; font-family:sans-serif; padding:20px;">
+
+<h1 style="text-align:center; font-size:48px;">Playlist Check Result</h1>
+
+{% if all_errors %}
+    <h2 style="color:#ff6666; text-align:center;">エラーが見つかりました</h2>
+{% else %}
+    <h2 style="color:lightgreen; text-align:center;">すべて正常です</h2>
+{% endif %}
+
+<hr style="margin:30px 0;">
+
+{% for item in report_data %}
+<div style="margin-bottom:40px;">
+
+    <h2>Pair {{ item.pair }} - {{ item.role }} ({{ item.filename }})</h2>
+
+    <div style="display:flex; gap:10px; margin-bottom:10px;">
+        {% for t in item.thumbnails %}
+            <img src="{{ t }}" style="width:120px; height:auto; border:1px solid #444;">
+        {% endfor %}
+    </div>
+
+    {% if item.errors %}
+        <ul style="color:#ff6666;">
+        {% for title, msgs in item.errors %}
+            <li><strong>{{ title }}</strong>
+                <ul>
+                {% for m in msgs %}
+                    <li>{{ m }}</li>
+                {% endfor %}
+                </ul>
+            </li>
+        {% endfor %}
+        </ul>
+    {% else %}
+        <p style="color:lightgreen;">OK</p>
+    {% endif %}
+
+</div>
+<hr>
+{% endfor %}
+
+</body>
+</html>

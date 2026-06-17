@@ -1,0 +1,4 @@
+[
+	{"type": "image", "path": "imagesA/imga5.jpg", "logo": {"path": "logos/logo_m.png","pos": "top-right","size": [150, 150]}},
+	{"type": "image", "path": "imagesA/imga6.png"}
+]

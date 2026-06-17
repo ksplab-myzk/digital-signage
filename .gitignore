@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Qt / PyQt
+*.qrc
+*.pyqt5rc
+
+# Logs
+logs/
+*.log
+
+# Chrome user data
+chrome_profile/
+chrome_user_data/
+chrome_temp/
+
+# Vimeo player cache
+cache/
+tmp/
+
+# Config
+config.ini
+
+# Virtual environment
+venv/
+env/
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Backup files
+*.bak
+*.tmp

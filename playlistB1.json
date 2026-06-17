@@ -1,0 +1,7 @@
+[
+	{"type": "image", "path": "imagesB/imgb1.jpg",
+		 	"logo": {"path": "logos/logo_kd_1.jpg","pos": "top-right","size": [200, 200]}},
+	{"type": "web", "url": "https://kodomo-design.jp/school-list/miyazakidai/","duration": 30000,"scroll": true, "scroll_speed": 5,
+		 	"logo": {"path": "logos/logo_kd.png","pos": "bottom-right","size": [250, 100]}},
+	{"type": "image", "path": "imagesB/imgb2.png"}
+]
