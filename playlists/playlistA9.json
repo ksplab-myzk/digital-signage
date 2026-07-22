@@ -1,0 +1,4 @@
+[
+	{"type": "pdf_images", "folder": "pdf_files/proken",	 "orientation": "portrait"},
+	{"type": "web", "url": "https://programming-sc.com/about/","duration": 35000,"scroll": true, "scroll_speed": 4}
+]

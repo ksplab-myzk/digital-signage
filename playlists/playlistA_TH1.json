@@ -1,0 +1,4 @@
+[
+	{"type":"video", "path":"videosA/Tech_Title.mp4","duration": 8000},
+	{"type": "image", "path": "imagesA/TH_title.png", "duration": 3000}
+]

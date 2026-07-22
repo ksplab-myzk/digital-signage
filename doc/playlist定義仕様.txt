@@ -1,0 +1,95 @@
+[
+  {
+    "type": "image | video | web | pdf | text",
+    "path": "string",
+    "duration": 10,
+    "transition": "fade | none",
+    "logo": {
+      "path": "string",
+      "position": "top-left | top-right | bottom-left | bottom-right",
+      "size": 128
+    },
+    "text": {
+      "content": "string",
+      "position": "top | bottom | center",
+      "color": "#FFFFFF",
+      "background": "#00000080",
+      "size": 32
+    },
+    "orientation": "portrait | landscape"
+  }
+]
+
+{
+  "type": "image",
+  "path": "media/image01.jpg",
+  "duration": 10,
+  "transition": "fade",
+  "logo": { ... },
+  "text": { ... },
+  "orientation": "landscape"
+}
+
+
+{
+  "type": "video",
+  "path": "media/movie01.mp4",
+  "transition": "none",
+  "duration": 30,
+  "logo": { ... },
+  "text": { ... }
+}
+
+
+{
+  "type": "web",
+  "path": "https://example.com",
+  "duration": 15,
+  "transition": "fade",
+
+  "scroll": true,
+  "scroll_speed": 2,
+
+  "logo": {
+    "path": "media/logo.png",
+    "position": "top-right",
+    "size": 128
+  },
+  "text": {
+    "content": "bbbbb",
+    "position": "bottom",
+    "color": "#FFFFFF",
+    "background": "#00000080",
+    "size": 32
+  }
+}
+
+
+{
+  "type": "pdf_images",
+  "folder": "media/info.pdf",
+  "duration": 10,
+  "transition": "fade",
+  "orientation": "portrait"
+}
+
+
+"text": {
+  "value": "aaa",
+  "pos": "bottom-left",
+  "font_size": 48,
+  "color": "#FFFF00",
+  "font": "Noto Sans JP",
+  "bg_color": "rgba(0,0,0,0.8)",
+  "offset_x": 20,
+  "offset_y": -100
+}
+
+
+"logo": {
+  "path": "media/logo.png",
+  "position": "top-right",
+  "size": 128
+}
+
+

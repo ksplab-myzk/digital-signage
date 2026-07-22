@@ -1,0 +1,6 @@
+[
+	{"type":"video", "path":"videosA/KDA_Title.mp4","duration": 10000},
+	{"type": "web", "url": "https://kodomo-design.jp/school-list/miyazakidai/","duration": 60000,"scroll": true, "scroll_speed": 2,
+	 	"logo": {"path": "logos/logo_kd_1.jpg","pos": "bottom-left","size": [150, 150]}},
+	{"type": "image", "path": "imagesB/kda_title.png", "duration": 20000}
+]

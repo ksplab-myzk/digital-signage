@@ -1,0 +1,5 @@
+VS codeでのvenv設定
+ [Ctrl][Shit]+p
+ Python: Select Interpreter
+※python3.11でQt6の場合はvenv不要（ラズパイでは必要）
+

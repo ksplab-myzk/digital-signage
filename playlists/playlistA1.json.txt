@@ -1,0 +1,5 @@
+[
+	{"type":"video", "path":"videosA/MindPaletteNest_タイトル.mp4","duration": 10000},
+	{"type":"video", "path":"videosA/kspg_title.mp4","duration": 10000},
+	{"type": "web", "url": "https://kids-prolab.com","duration": 88000,"scroll": true, "scroll_speed": 3}
+]
