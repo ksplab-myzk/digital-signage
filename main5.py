@@ -10,7 +10,6 @@ import re
 import configparser
 from pathlib import Path
 
-
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
 from PySide6.QtCore import Qt, QTimer, QProcess, QPropertyAnimation
@@ -69,9 +68,6 @@ class MediaWindow(QWidget):
             CardFlipTransition(self)
         ]
 
-        self.prev_pixmap = None
-        self.prev_type = None
-
         self.prev_pixmap = None      # 前回の画像
         self.prev_type = None        # 前回のメディアタイプ（image/video）
         self.animations = []         # アニメーション保持
@@ -97,6 +93,10 @@ class MediaWindow(QWidget):
 
         self.original_geometry = self.label.geometry()
 
+        self.black_pixmap = QPixmap(self.width(), self.height())
+        self.black_pixmap.fill(Qt.black)
+
+
         # ESCで終了
         shortcut = QShortcut(QKeySequence("Escape"), self)
         shortcut.activated.connect(app.quit)
@@ -109,11 +109,16 @@ class MediaWindow(QWidget):
 
     def show_media(self):
 
+        self.logger.write(self.role, f"show_media() : {self.role}: 開始")
+
         if getattr(self, "_transition_running", False):
+            self.logger.write(self.role, f"show_media() : {self.role}: _transition_running return")
             return
 
         if getattr(self, "_showing", False):
+            self.logger.write(self.role, f"show_media() : {self.role}: _showing return")
             return
+
         self._showing = True
 
         # ★ 前の画像を完全に消す（これが重要）
@@ -141,8 +146,9 @@ class MediaWindow(QWidget):
 
             self._transition_done = False
 
-            if self.index >= len(self.playlist):
-                self.index = 0
+            #if self.index >= len(self.playlist):
+            #    self.sync.finished(self.role)   # role = "a" or "b"
+                #self.index = 0
 
             # if self.prev_pixmap is not None:
             #    self.prev_pixmap = self.get_scaled_pixmap(self.prev_pixmap)
@@ -179,9 +185,10 @@ class MediaWindow(QWidget):
             if media_type == "image":
 
                 self.webview.stackUnder(self.label)
-                self.apply_logo(item.get("logo"))
                 self.apply_text(item.get("text"))
+                self.apply_logo(item.get("logo"))
 
+                print(f"[DEBUG] loading image: {item['path']}")
                 pix = QPixmap(item["path"])
                 self.logger.write(self.role,
                     f"[Image] [{self.role}] index={self.index} path={item['path']} isNull={pix.isNull()}"
@@ -190,13 +197,16 @@ class MediaWindow(QWidget):
                     self.show_error(f"画像が読み込めません: {item['path']}")
                     return
 
+                print(f"[DEBUG] pix.isNull() = {pix.isNull()}")
                 scaled = self.get_scaled_pixmap(pix)
 
                 self.logger.write(self.role, f"show_media() : image を表示開始")
 
                 # 初回
                 if self.prev_pixmap is None:
-                    self.label.setPixmap(scaled)
+                    # self.label.setPixmap(scaled)
+                    self._set_label_pixmap(scaled, "show_media:199")
+
                     self.prev_pixmap = scaled
                     QTimer.singleShot(item.get("duration", 5000), self._next_item)
                     return
@@ -243,6 +253,9 @@ class MediaWindow(QWidget):
 
                 self.pdf_index = 0
                 self.show_pdf_page(item)
+                self.logger.write(self.role, 
+                    f"show_media():[PDF] show_pdf_page() Called in:[{self.role}] index={self.index} path={item['folder']} "
+                )
 
             # ---- 動画 ----
             elif media_type == "video":
@@ -274,8 +287,8 @@ class MediaWindow(QWidget):
                 return
 
             # ★ プレイリスト1周終了を検知
-            if self.index == len(self.playlist) - 1:
-                self.sync.finished(self.role)   # role = "a" or "b"
+            # if self.index == len(self.playlist) - 1:
+            #    self.sync.finished(self.role)   # role = "a" or "b"
 
         finally:
             self._showing = False
@@ -338,11 +351,14 @@ class MediaWindow(QWidget):
 
     def show_pdf_page(self, item):
 
-        self.logger.write(self.role, f"show_pdf_page() : PDF開始")
+        self.logger.write(self.role, f"show_pdf_page() : PDF開始 pdf_index={self.pdf_index}")
 
         self.apply_logo(item.get("logo"))
 
         if self.pdf_index >= len(self.pdf_pages):
+            self.logger.write(self.role, f"show_pdf_page() : PDF終了(最終頁) pdf_index={self.pdf_index}")
+            self.pdf_index = 0
+            self._transition_running = False
             self._next_item()
             return
 
@@ -366,7 +382,9 @@ class MediaWindow(QWidget):
 
         # 初回
         if self.prev_pixmap is None:
-            self.label.setPixmap(scaled)
+            # self.label.setPixmap(scaled)
+            self._set_label_pixmap(scaled, "show_pdf_page")
+
             self.prev_pixmap = scaled
             QTimer.singleShot(item.get("duration", 5000), lambda: self._next_pdf_page(item))
             return
@@ -374,6 +392,12 @@ class MediaWindow(QWidget):
         # トランジション実行（前ページ→次ページ）
         transition = self.choose_transition()
         transition.run(self.prev_pixmap, scaled, lambda: self._after_pdf_transition(item, scaled))
+
+        self.logger.write(self.role, f"show_pdf_page() : PDF終了 pdf_index={self.pdf_index}")
+
+    def _next_pdf_page(self, item):
+        self.pdf_index += 1
+        self.show_pdf_page(item)
 
     def show_app(self, item):
         self.apply_logo(item.get("logo"))
@@ -410,11 +434,21 @@ class MediaWindow(QWidget):
             self.next_item()
 
     def show_web(self, item):
+
+        self.logger.write(self.role,
+            f"[Web BEFORE] index={self.index} "
+            f"showing={getattr(self, '_showing', None)} "
+            f"transition_running={getattr(self, '_transition_running', None)} "
+            f"label_visible={self.label.isVisible()} "
+            f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
+        )
+
         self.apply_logo(item.get("logo"))
 
         self.logger.write(self.role, 
             f"[Web] [{self.role}] index={self.index} url={item['url']} "
         )
+        self._transition_running = False
 
         url = item["url"]
         duration = item.get("duration", 10000)
@@ -428,9 +462,20 @@ class MediaWindow(QWidget):
         self.webview.setGeometry(self.rect())
         self.webview.load(QUrl(url))
 
-        self.label.hide()
-        self.webview.show()
-        self.webview.raise_()
+        #self.label.lower()  
+        #self.label.hide()
+        #self.webview.show()
+        #self.webview.raise_()
+
+        QTimer.singleShot(50, lambda: self._show_web_delayed(item))
+
+        self.logger.write(self.role,
+            f"[Web AFTER] index={self.index} "
+            f"showing={getattr(self, '_showing', None)} "
+            f"transition_running={getattr(self, '_transition_running', None)} "
+            f"label_visible={self.label.isVisible()} "
+            f"web_visible={self.webview.isVisible()}"
+        )
 
         # ★ ロゴを WebView の上に重ねる
         if hasattr(self, "logo_label"):
@@ -445,8 +490,18 @@ class MediaWindow(QWidget):
 
         QTimer.singleShot(duration, self._close_web_and_next)
 
+    def _show_web_delayed(self, item):
+        self.label.lower()
+        self.label.hide()
+        self.webview.show()
+        self.webview.raise_()
 
     def _start_web_scroll(self, ok):
+
+        self.logger.write(self.role, 
+            f"[Web] [{self.role}] start_web_scroll "
+        )
+
         if not ok:
             return
 
@@ -469,7 +524,16 @@ class MediaWindow(QWidget):
 
         self.webview.page().runJavaScript(js)
 
+        self.logger.write(self.role, 
+            f"[Web] [{self.role}] start_web_scroll END"
+        )
+
     def _close_web_and_next(self):
+
+        self.logger.write(self.role, 
+            f"[Web] [{self.role}] close_web_end_next() "
+        )
+
         # WebView を隠す（破棄しない）
         if hasattr(self, "webview"):
             self.webview.hide()
@@ -478,6 +542,10 @@ class MediaWindow(QWidget):
         # ★ スクロール停止
         self.webview.page().runJavaScript(
             "if (window._scrollTimer) clearInterval(window._scrollTimer);"
+        )
+
+        self.logger.write(self.role, 
+            f"[Web] [{self.role}] close_web_end_next() END"
         )
 
         self._next_item()
@@ -502,6 +570,12 @@ class MediaWindow(QWidget):
         )
         return embed_url
 
+    def _set_label_pixmap(self, pix, context=""):
+        if pix is None or (hasattr(pix, "isNull") and pix.isNull()):
+            print(f"[PIXMAP ERROR] {context} pixmap is None or null")
+            return
+        self.label.setPixmap(pix)
+
     def set_scaled_pixmap(self, pix):
         # ウィンドウのサイズ
         # ラベルのサイズを基準にする
@@ -525,10 +599,19 @@ class MediaWindow(QWidget):
             Qt.SmoothTransformation
         )
 
-        self.label.setPixmap(scaled_pix)
+        # self.label.setPixmap(scaled_pix)
+        self._set_label_pixmap(scaled_pix, "set_scaled_pixmap")
 
     def get_scaled_pixmap(self, pix, orientation=None):
+
+        self.logger.write(self.role, f"get_scaled_pixmap() Start " )
+
+        if pix is None:
+            print("[DEBUG] get_scaled_pixmap: pix is None")
+            return None
+    
         if pix.isNull():
+            print("[DEBUG] get_scaled_pixmap: pix isNull")
             return pix
 
         # ウィンドウサイズに合わせてスケール
@@ -614,12 +697,29 @@ class MediaWindow(QWidget):
         self.label.setGraphicsEffect(None)
 
         # ★ pixmap を再セット（opacity=0 のままの事故を防ぐ）
-        self.label.setPixmap(self.prev_pixmap)
+        # self.label.setPixmap(self.prev_pixmap)
+        # self._set_label_pixmap(self.prev_pixmap, "_after_transition")
+        # if self.prev_pixmap is not None:
+        #     self.logger.write(self.role, f"_after_transition() : role={self.role} prev_pixmap not none")
+        #     self._set_label_pixmap(self.prev_pixmap, "_after_transition")
+
+        # if self.prev_pixmap is None and hasattr(self, "_transition_new_pix"):
+        #     self._set_label_pixmap(self._transition_new_pix, "_after_transition:new_pix")
+        #     self.prev_pixmap = self._transition_new_pix
+        if  hasattr(self, "_transition_new_pix"):
+            self._set_label_pixmap(self._transition_new_pix, "_after_transition:new_pix")
+            self.prev_pixmap = self._transition_new_pix
 
         # 次の画像へ進む
         item = self.playlist[self.index]
+
+        self.logger.write(self.role, f"_after_transition() : role={self.role} next_item={item}")
+
         duration = item.get("duration", 5000)
+        # duration = 10
         QTimer.singleShot(duration, self._next_item)
+
+        self.logger.write(self.role, f"_after_transition() : role={self.role} 終了")
 
     def _after_transition_video_start(self):
         item = self.playlist[self.index]
@@ -629,31 +729,132 @@ class MediaWindow(QWidget):
         media = self.vlc_instance.media_new(item["path"])
         self.player.set_media(media)
 
-        # 再生開始
         win_id = int(self.winId())
+
+        # OSごとに埋め込み方法を変える
         if platform.system() == "Windows":
             QTimer.singleShot(50, lambda: self.player.set_hwnd(win_id) or self.player.play())
-        else:
+        elif platform.system() == "Linux":
             QTimer.singleShot(150, lambda: self.player.set_xwindow(win_id) or self.player.play())
+        else:  # macOS
+            QTimer.singleShot(250, lambda: self.player.set_nsobject(win_id) or self.player.play())
 
-        # 動画終了監視
+        # ★元のロジック：動画終了監視（ポーリング）
         self._check_video_end()
+
+    def _mac_video_start(self):
+        # NSView をセット
+        win_id = int(self.winId())
+        self.player.set_nsobject(win_id)
+
+        # 再生開始
+        self.player.play()
+
+        # ★ここでイベントハンドラを登録する（重要）
+        em = self.player.event_manager()
+        em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_video_end)
+
+    def _video_start(self):
+        self.player.play()
+        em = self.player.event_manager()
+        em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_video_end)
+
+    def _on_video_end(self, event):
+        print("Video ended")
+        self.next_step()
 
     def _check_video_end(self):
         if self.player is None:
             return
 
+        # self.logger.write(self.role,
+        #    f"[_check_video_end()] [{self.role}] index={self.index}  Start")
+
         state = self.player.get_state()
+
+        self.logger.write(self.role,
+            f"[_check_video_end() BEFORE] index={self.index} state={state} "
+            f"showing={getattr(self, '_showing', None)} "
+            f"transition_running={getattr(self, '_transition_running', None)} "
+            f"label_visible={self.label.isVisible()} "
+            f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
+        )
+        
+        # self.logger.write(self.role,
+        #    f"[_check_video_end()] [{self.role}] index={self.index}  state ={state}")
+
         if state in (vlc.State.Ended, vlc.State.Stopped):
-            self._next_item()
+            # self._transition_from_video()   # ★ここが重要
+            # self._next_item()
+
+            self.logger.write(self.role,
+                f"[_check_video_end()] [{self.role}] index={self.index}  state ={state}")
+
+            self._transition_running = False   # ★ 応急処置
+
+            # VLC の描画先を切り離す（最重要）
+            #try:
+            #    self.player.set_hwnd(0)
+            #except:
+            #    pass
+
+            # ★ OSごとに描画先を切り離す（最重要）
+            self.detach_video_output()
+
+            if self.player:
+                self.player.stop()
+                self.player = None
+
+            # label の残留フレームを消す
+            self.label.clear()
+            self.label.repaint()
+            self.label.hide()
+            self.label.lower()
+
+            # ★ここで index を進める（必須）
+            self.index += 1
+            if self.index >= len(self.playlist):
+                # self.index = 0
+                # ★ 応急処置：ここで finished() を呼ぶ
+                self.sync.finished(self.role)
+                return
+
+            # 次のコンテンツを確認
+            next_item = self.playlist[self.index]
+
+            if next_item["type"] == "video":
+                self._after_transition_video_start()
+
+            elif next_item["type"] in ("image", "pdf"):
+                self._transition_from_video()
+
+            elif next_item["type"] == "web":
+                # ★ WEB の場合はフェードを使わず直接表示
+                # self.player.stop()
+                # self.player = None
+                self.show_web(next_item)
+
             return
 
         QTimer.singleShot(200, self._check_video_end)
 
+
+    def detach_video_output(self):
+        try:
+            if sys.platform.startswith("win"):
+                self.player.set_hwnd(0)
+            elif sys.platform.startswith("linux"):
+                self.player.set_xwindow(0)
+            elif sys.platform.startswith("darwin"):
+                self.player.set_nsobject(0)
+        except Exception as e:
+            print("detach_video_output error:", e)
+
     def _transition_from_video(self):
         # 動画停止
-        self.player.stop()
-        self.player = None
+        if self.player:
+            self.player.stop()
+            self.player = None
 
         # 黒背景を old_pix として扱う
         black = QPixmap(self.width(), self.height())
@@ -661,6 +862,19 @@ class MediaWindow(QWidget):
 
         # 次の画像を読み込む
         next_item = self.playlist[self.index]
+
+        # 画像以外はまず「フェードなしで素直に show_media()」に逃がす
+        if next_item["type"] != "image":
+            print(f"[TRANSITION] next_item type={next_item['type']} → skip fade, call show_media()")
+            self.show_media()
+            return
+
+        raw = QPixmap(next_item["path"])
+        if raw.isNull():
+            print(f"[TRANSITION ERROR] QPixmap({next_item['path']}) is null")
+            self.show_media()  # とりあえず落ちないように逃がす
+            return
+
         next_pix = self.get_scaled_pixmap(QPixmap(next_item["path"]))
 
         # トランジション実行（黒→画像）
@@ -674,52 +888,98 @@ class MediaWindow(QWidget):
         QTimer.singleShot(item.get("duration", 5000), lambda: self.show_pdf_page(item))
 
     def apply_logo(self, logo_info):
+
+        self.logger.write(self.role,
+            f"[apply_logo()] [{self.role}] index={self.index} Start")
+
         if not logo_info:
+
+            self.logger.write(self.role,
+                f"[apply_logo()] [{self.role}] Logo Nothing return")
             self.logo_label.hide()
             return
 
         # ロゴ画像読み込み
         pix = QPixmap(logo_info["path"])
         if pix.isNull():
+            self.logger.write(self.role,
+                f"[apply_logo()] [{self.role}] Logo pix null return")
             self.logo_label.hide()
             return
 
         # サイズ指定
         w, h = logo_info.get("size", [pix.width(), pix.height()])
         self.logo_label.setPixmap(pix)
+        # self._set_label_pixmap(pix, "apply_logo")
+
         self.logo_label.resize(w, h)
 
         # 位置指定
         pos = logo_info.get("pos", "top-left")
         self.current_logo_pos = pos  # resizeEvent 用
 
-        self.set_logo_position(pos, w, h)
+        offset_x = logo_info.get("offset_x", 0)
+        offset_y = logo_info.get("offset_y", 0)
+
+        self.set_logo_position(pos, w, h, offset_x, offset_y)
+
+        print("logo geometry:", self.logo_label.geometry())
+        print("logo pos:", self.logo_label.pos())
+        print("logo size:", self.logo_label.size())
+
+        self.logo_label.raise_()
         self.logo_label.show()
 
-    def set_logo_position(self, pos, w, h):
+        self.logger.write(self.role,
+            f"[apply_logo()] [{self.role}] index={self.index} End")
+
+    def set_logo_position(self, pos, w, h, offset_x=0, offset_y=0):
+
+        self.logger.write(self.role, f"[set_logo_position()] [{self.role}] Start")
+
         margin = 20
         win_w = self.width()
         win_h = self.height()
 
         if pos == "top-left":
-            x, y = margin, margin
+            x = margin + offset_x
+            y = margin + offset_y
+
         elif pos == "top-right":
-            x, y = win_w - w - margin, margin
+            x = win_w - w - margin + offset_x
+            y = margin + offset_y
+
         elif pos == "bottom-left":
-            x, y = margin, win_h - h - margin
+            x = margin + offset_x
+            y = win_h - h - margin + offset_y
+
         elif pos == "bottom-right":
-            x, y = win_w - w - margin, win_h - h - margin
+            x = win_w - w - margin + offset_x
+            y = win_h - h - margin + offset_y
+
         elif pos == "center":
-            x, y = (win_w - w)//2, (win_h - h)//2
+            x = (win_w - w)//2 + offset_x
+            y = (win_h - h)//2 + offset_y
+
         else:
-            x, y = margin, margin
+            x = margin + offset_x
+            y = margin + offset_y
 
         self.logo_label.move(x, y)
 
+        self.logger.write(self.role, f"[set_logo_position()] [{self.role}] End")
 
     def apply_text(self, text_info):
+
+        self.logger.write(self.role,
+            f"[apply_text()] [{self.role}] index={self.index} Start")
+
         if not text_info:
             self.text_label.hide()
+
+            self.logger.write(self.role,
+                f"[apply_text()] [{self.role}] text Nothing return")
+
             return
 
         value = text_info.get("value", "")
@@ -768,6 +1028,9 @@ class MediaWindow(QWidget):
         self.text_label.raise_()
         self.text_label.show()
 
+        self.logger.write(self.role,
+            f"[apply_text()] [{self.role}] index={self.index} End")
+
     def _apply_text_position(self, pos, offset_x=0, offset_y=0):
         w = self.width()
         h = self.height()
@@ -798,40 +1061,61 @@ class MediaWindow(QWidget):
 
         self.text_label.move(int(x), int(y))
 
-    def on_sync_command(self, cmd):
+    def on_sync_command(self, cmd, playlist_folder, playlist_file):
         # if cmd == "REPEAT":
         #     self._next_item()
 
+        self.logger.write(self.role, f"on_sync_command() : role={self.role} 開始")
+
         if cmd.startswith("START_PAIR_"):
-            pair = int(cmd.split("_")[-1])
-            fname = f"playlist{self.role.upper()}{pair}.json"
-            self.playlist = load_playlist(fname)
+
+            # ★ 状態フラグをリセット
+            self._nexting = False
+            self.transition_running = False
+            self.pdf_index = 0   # PDF用のインデックスもリセット推奨
+
+            # pair = int(cmd.split("_")[-1])
+            # fname = f"playlist{self.role.upper()}{pair}.json"
+            self.playlist = load_playlist(playlist_file, playlist_folder)
             self.index = 0
             self.show_media()
+
+        self.logger.write(self.role, f"on_sync_command() : role={self.role} 終了")
 
     def _next_item(self):
 
         self.logger.write(self.role, f"_next_item() : role={self.role} 開始")
+        self.logger.write(self.role, f"_next_item(): transition_running={getattr(self, '_transition_running', None)}")
+
         self.logger.write(self.role, 
             f"playlist length={len(self.playlist)} index={self.index} role={self.role}"
         )
 
         if getattr(self, "error_mode", False):
+            self.logger.write(self.role, f"_next_item() : role={self.role} error_mode! return")
             return  # ★ エラー発生後は進行停止
 
         if getattr(self, "_transition_running", False):
+            self.logger.write(self.role, f"_next_item() : role={self.role} transition_running return")
             return
 
         if getattr(self, "_nexting", False):
+            self.logger.write(self.role, f"_next_item() : role={self.role} _nexting return")
             return
+        
         self._nexting = True
-
         self.index += 1
-        if self.index >= len(self.playlist):
-            self.index = 0
+
+        if self.index >= len(self.playlist) :
+            # self.index = 0
+            self.logger.write(self.role, f"_next_item() : role={self.role} last_item return")
+            self.sync.finished(self.role)
+            return  # ★ 最終アイテムの場合は進行停止
 
         self.show_media()
         self._nexting = False
+
+        self.logger.write(self.role, f"_next_item() : role={self.role} 終了")
 
     def show_error(self, message):
         html = f"""
@@ -856,7 +1140,25 @@ class MediaWindow(QWidget):
 
         self.logger.write(self.role, f"[{self.role}] ERROR: {message}")
 
+    def reset_state(self):
+        # プレイリストのインデックスをリセット
+        self.index = 0
+
+        # PDF のページインデックスがある場合はリセット
+        if hasattr(self, "pdf_index"):
+            self.pdf_index = 0
+
+        # 遷移中フラグをリセット
+        if hasattr(self, "transition_running"):
+            self.transition_running = False
+
+        # next_item の二重呼び出し防止フラグをリセット
+        if hasattr(self, "_nexting"):
+            self._nexting = False
+
+
 def load_config():
+
     config = configparser.ConfigParser()
     with open("config.ini", "r", encoding="utf-8") as f:
         config.read_file(f)
@@ -864,21 +1166,36 @@ def load_config():
     return {
         "mode": config.get("display", "mode", fallback="dual").strip().lower(),
         "fallback_to_single": config.getboolean("display", "fallback_to_single", fallback=True),
+
+        "playlist_folder": config.get("playlist", "folder", fallback="playlists"),
+
+        "pairs_a": config.get("playlist", "pairs_a", fallback="pairsA"),
+        "pairs_b": config.get("playlist", "pairs_b", fallback="pairsB"),
         "path_a": config.get("playlist", "path_a", fallback="playlistA"),
         "path_b": config.get("playlist", "path_b", fallback="playlistB"),
+        
         "allow_single_when_b_missing": config.getboolean(
             "playlist", "allow_single_when_b_missing", fallback=True
         ),
     }
 
 class PairSync:
-    def __init__(self):
-        self.current_pair = 1
+
+    def __init__(self, logger, playlist_folder, pairsA, pairsB):
+        self.current_pair = 0
         self.a_cycles = 0
         self.b_cycles = 0
         self.winA = None
         self.winB = None
         self.error_flag = False
+
+        self.playlist_folder = playlist_folder
+        self.pairsA = pairsA
+        self.pairsB = pairsB
+        self.logger = logger 
+
+        self.pairsA = load_pairs(pairsA, playlist_folder)
+        self.pairsB = load_pairs(pairsB, playlist_folder)
 
     def error(self, role, message):
         self.error_flag = True
@@ -890,56 +1207,58 @@ class PairSync:
 
     def finished(self, role):
 
+        self.logger.write(role, f"finished() : role={role} 開始")
+
         if self.error_flag:
             return  # ★ エラー発生後はペア切り替え停止
         
-        if role == "a":
+        if role == "A":
             self.a_cycles += 1
+            self.logger.write(role, f"finished() : a_cyles ={self.a_cycles} ")
         else:
             self.b_cycles += 1
+            self.logger.write(role, f"finished() : b_cyles ={self.b_cycles} ")
 
         # --- 同期ルール ---
         # A/B 両方が 1 周したら次のペアへ
         if self.a_cycles >= 1 and self.b_cycles >= 1:
+            self.logger.write(role, f"finished() : role={role} next_pair call")
             self.next_pair()
 
-        # 1) どちらかがまだ1回も終わっていない → 同じペアを続行
-        # if self.a_cycles == 0 or self.b_cycles == 0:
-        #     self.send(role, "REPEAT")
-        #     return
+        self.logger.write(role, f"finished() : role={role} 終了")
 
-        # # 2) a が FINISHED した時点で b が1回以上終わっている → 次のペアへ
-        # if role == "a" and self.b_cycles >= 1:
-        #     self.next_pair()
-        #     return
-
-        # # 3) b が FINISHED したが a がまだ終わっていない → b をループ
-        # if role == "b" and self.a_cycles == 0:
-        #     self.send("b", "REPEAT")
-        #     return
-
-        # # 4) a がループ中に b も終わった → b をループ
-        # if role == "b" and self.a_cycles >= 1:
-        #     self.send("b", "REPEAT")
-        #     return
-
-    def send(self, role, cmd):
-        if role == "a":
-            self.winA.on_sync_command(cmd)
-        else:
-            self.winB.on_sync_command(cmd)
+    # def send(self, role, cmd):
+    #     if role == "A":
+    #         self.winA.on_sync_command(cmd)
+    #     else:
+    #         self.winB.on_sync_command(cmd)
 
     def next_pair(self):
+
+        self.logger.write("", f"next_pair() 開始")
+
         # 次のペア番号を仮に計算
         next_pair = self.current_pair + 1
 
-        # 次のペアのファイル名
-        fnameA = f"playlistA{next_pair}.json"
-        fnameB = f"playlistB{next_pair}.json"
+        # 範囲外なら 0 に戻す（ループ）
+        if next_pair >= len(self.pairsA):
+            next_pair = 0
+
+        # プレイリストフォルダ
+        playlist_folder = self.playlist_folder
+
+        fileA = self.pairsA[next_pair]
+        fileB = self.pairsB[next_pair]
+
+        # 次のペアのファイルパス（フォルダ基準）
+        fnameA = os.path.join(playlist_folder, fileA)
+        fnameB = os.path.join(playlist_folder, fileB)
+        self.logger.write("", f"next_pair() NEXT playlistA={fnameA} playlistB={fnameB} ")
 
         # ★ ファイルが存在しなければ pair1 に戻す
         if not (os.path.exists(fnameA) and os.path.exists(fnameB)):
-            next_pair = 1
+            self.logger.write("", f"next_pair() playlistA={fnameA} playlistB={fnameB} Not exist")
+            next_pair = 0
 
         # ★ ここが重要：同じペアに戻るときは START_PAIR を送らない
         if next_pair == self.current_pair:
@@ -955,12 +1274,36 @@ class PairSync:
         self.a_cycles = 0
         self.b_cycles = 0
 
-        # A/B に新しいペアを開始させる
-        self.winA.on_sync_command(f"START_PAIR_{self.current_pair}")
-        self.winB.on_sync_command(f"START_PAIR_{self.current_pair}")
+        self.winA.reset_state()
+        self.winB.reset_state()
 
-def load_playlist(path=str):
-    p = Path(path)
+        # A/B に新しいペアを開始させる
+        self.winA.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileA)
+        self.winB.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileB)
+
+def load_pairs(path: str, playlist_folder: str):
+    base_dir = Path(__file__).resolve().parent
+    p = base_dir / playlist_folder / path
+
+    if not p.exists():
+        return []
+
+    try:
+        with p.open(encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except:
+        return []
+
+
+def load_playlist(path: str, playlist_folder: str):
+
+    # playlist_folder/path を絶対パス化
+    base_dir = Path(__file__).resolve().parent
+    playlist_dir = base_dir / playlist_folder
+    p = playlist_dir / path
+
+    # p = Path(path)
     if not p.exists():
         return []
     try:
@@ -970,12 +1313,12 @@ def load_playlist(path=str):
     except:
         return []
 
-def load_playlist_pair(base_a: str, base_b: str, pair_number: int):
-    file_a = f"{base_a}{pair_number}.json"
-    file_b = f"{base_b}{pair_number}.json"
+def load_playlist_pair(base_a: str, base_b: str, pair_number: int, playlist_folder: str):
+    # file_a = f"{base_a}{pair_number}.json"
+    # file_b = f"{base_b}{pair_number}.json"
 
-    playlistA = load_playlist(file_a)
-    playlistB = load_playlist(file_b)
+    playlistA = load_playlist(base_a, playlist_folder)
+    playlistB = load_playlist(base_b, playlist_folder)
 
     if not playlistA:
         return None, None  # A が無いならこのペアは存在しない
@@ -993,16 +1336,23 @@ def main():
     # ロガー
     logger = DailyLogger(base_dir="logs", prefix="signage_")
 
-    # 同期エンジン
-    sync = PairSync()
-
     cfg = load_config()
     mode = cfg["mode"]
     fallback_to_single = cfg["fallback_to_single"]
     allow_single_when_b_missing = cfg["allow_single_when_b_missing"]
 
-    base_a = cfg["path_a"].replace(".json", "")
-    base_b = cfg["path_b"].replace(".json", "")
+    playlist_folder = cfg["playlist_folder"]
+    # base_a = cfg["path_a"].replace(".json", "")
+    # base_b = cfg["path_b"].replace(".json", "")
+
+    pairs_a = cfg["pairs_a"]
+    pairs_b = cfg["pairs_b"]
+
+    # 同期エンジン
+    sync = PairSync(logger, playlist_folder, pairs_a, pairs_b)
+
+    firstA = sync.pairsA[0]
+    firstB = sync.pairsB[0]
 
     screens = app.screens()
     screen_count = len(screens)
@@ -1012,8 +1362,8 @@ def main():
     # -----------------------------------------------------
     # ペア番号 1 を読み込む
     # -----------------------------------------------------
-    pair_number = 1
-    playlistA, playlistB = load_playlist_pair(base_a, base_b, pair_number)
+    pair_number = 0
+    playlistA, playlistB = load_playlist_pair(firstA, firstB, pair_number, playlist_folder)
 
     if not playlistA:
         print("[ERROR] playlistA1.json が見つかりません。")
@@ -1079,6 +1429,7 @@ def main():
         print("[INFO] Running in SINGLE display mode")
 
         winA = MediaWindow(playlistA, app, "A", sync, logger)
+        sync.register_windows(winA, None)
 
         geoA = screens[0].geometry()
         winA.setGeometry(geoA)
@@ -1095,6 +1446,8 @@ def main():
 
         winA = MediaWindow(playlistA, app, "A", sync, logger)
         winB = MediaWindow(playlistB, app, "B", sync, logger)
+
+        sync.register_windows(winA, winB)
 
         geoA = screens[0].geometry()
         geoB = screens[1].geometry()

@@ -12,6 +12,13 @@ __pycache__/
 logs/
 *.log
 
+# Contents Files
+/videosA
+/videosB
+/pdf_files
+/imagesA
+/imagesB
+
 # Chrome user data
 chrome_profile/
 chrome_user_data/
@@ -27,6 +34,8 @@ config.ini
 # Virtual environment
 venv/
 env/
+venv39/
+venv310/
 
 # OS files
 Thumbs.db
@@ -35,3 +44,7 @@ Thumbs.db
 # Backup files
 *.bak
 *.tmp
+
+# vscode env
+.vscode
+develop/

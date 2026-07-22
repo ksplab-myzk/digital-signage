@@ -1,6 +1,11 @@
-from PySide6.QtWidgets import QLabel, QGraphicsOpacityEffect
+# from PySide2.QtCore import QPropertyAnimation, QEasingCurve, QObject, Signal
+# from PySide2.QtWidgets import QLabel, QGraphicsOpacityEffect
+# from PySide2.QtGui import QPixmap
+# from PySide2.QtCore import Qt
+
+from PySide6.QtWidgets import QLabel, QGraphicsOpacityEffect, QLabel
+from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QSequentialAnimationGroup, QParallelAnimationGroup, QEasingCurve
 from PySide6.QtGui import QTransform
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QSequentialAnimationGroup
 
 from .base import TransitionBase
 
@@ -12,9 +17,22 @@ class FadeTransition(TransitionBase):
         label = parent.label
 
         parent._transition_running = True
+        parent._transition_new_pix = new_pix
+
+        if old_pix is not None:
+            label.setPixmap(old_pix)
+        else:
+            # 動画→画像のケースでは黒画像をセットする
+            label.setPixmap(self.parent.black_pixmap)
+
+        # label.setPixmap(old_pix)
+
+        label.show()
+        label.raise_()
 
         # エフェクトをセット
         effect = QGraphicsOpacityEffect(label)
+        effect.setOpacity(1.0)
         label.setGraphicsEffect(effect)
 
         # --- フェードアウト ---
