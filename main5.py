@@ -1219,6 +1219,15 @@ class PairSync:
             self.b_cycles += 1
             self.logger.write(role, f"finished() : b_cyles ={self.b_cycles} ")
 
+        # --- シングルモード ---
+        if self.mode == "single":
+            if self.a_cycles >= 1:
+                self.logger.write(role, "finished() : SINGLE → next_pair call")
+                self.next_pair()
+            self.logger.write(role, f"finished() : role={role} 終了")
+            return
+
+        # --- デュアルモード（従来の処理） ---
         # --- 同期ルール ---
         # A/B 両方が 1 周したら次のペアへ
         if self.a_cycles >= 1 and self.b_cycles >= 1:
@@ -1274,12 +1283,21 @@ class PairSync:
         self.a_cycles = 0
         self.b_cycles = 0
 
-        self.winA.reset_state()
-        self.winB.reset_state()
+        # --- シングルモード ---
+        if self.mode == "single":
+            self.winA.reset_state()
+            self.winA.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileA)
 
-        # A/B に新しいペアを開始させる
-        self.winA.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileA)
-        self.winB.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileB)
+        else:
+            # -- デュアルモード
+            self.winA.reset_state()
+            self.winB.reset_state()
+
+            # A/B に新しいペアを開始させる
+            self.winA.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileA)
+            self.winB.on_sync_command(f"START_PAIR_{self.current_pair}", playlist_folder, fileB)
+
+        self.logger.write("", f"next_pair() 終了")
 
 def load_pairs(path: str, playlist_folder: str):
     base_dir = Path(__file__).resolve().parent
@@ -1379,6 +1397,8 @@ def main():
     if mode == "dual" and not playlistB and allow_single_when_b_missing:
         print("[WARN] playlistB1.json が無い → single に自動切替")
         mode = "single"
+
+    sync.mode = mode
 
     # -----------------------------------------------------
     # next_step（ペア番号の自動進行）
