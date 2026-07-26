@@ -88,9 +88,10 @@ class MediaWindow(QWidget):
         self.text_label.setWordWrap(True)
         self.text_label.hide()
 
-        self.webview = QWebEngineView(self)
-        self.webview.setGeometry(self.rect())
-        self.webview.hide()
+        # self.webview = QWebEngineView(self)
+        # self.webview.setGeometry(self.rect())
+        # self.webview.hide()
+        self.webview = None   # ★必ず初期化しておく
 
         self.logger = logger   # ★ これが必要！
 
@@ -133,7 +134,8 @@ class MediaWindow(QWidget):
         self.text_label.clear()
 
         # ★ WebView も一旦隠す（描画順序の乱れを防ぐ）
-        self.webview.hide()
+        if self.webview is not None:
+            self.webview.hide()
 
         # ★ すべてのタイマーを停止（これが重要）
         try:
@@ -157,7 +159,7 @@ class MediaWindow(QWidget):
             #    self.prev_pixmap = self.get_scaled_pixmap(self.prev_pixmap)
 
             # ★ まず前の Web を必ず片付ける（マスター／サブ共通）
-            if hasattr(self, "webview"):
+            if hasattr(self, "webview") and self.webview is not None:
                 self.webview.hide()
                 self.webview.lower()
 
@@ -187,7 +189,8 @@ class MediaWindow(QWidget):
             # ---- 画像 ----
             if media_type == "image":
 
-                self.webview.stackUnder(self.label)
+                if self.webview is not None:
+                    self.webview.stackUnder(self.label)
                 self.apply_text(item.get("text"))
                 self.apply_logo(item.get("logo"))
 
@@ -443,7 +446,7 @@ class MediaWindow(QWidget):
             f"showing={getattr(self, '_showing', None)} "
             f"transition_running={getattr(self, '_transition_running', None)} "
             f"label_visible={self.label.isVisible()} "
-            f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
+            f"web_visible={self.webview.isVisible() if self.webview else None}"
         )
 
         self.apply_logo(item.get("logo"))
@@ -456,11 +459,16 @@ class MediaWindow(QWidget):
         url = item["url"]
         duration = item.get("duration", 10000)
 
-        # WebView がなければ作る
-        if not hasattr(self, "webview"):
-            self.webview = QWebEngineView(self)
-            self.webview.setAttribute(Qt.WA_TranslucentBackground, True)
-            self.webview.setStyleSheet("background: transparent;")
+        # # WebView がなければ作る
+        # if not hasattr(self, "webview"):
+        #     self.webview = QWebEngineView(self)
+
+        if self.webview is not None:
+            self.webview.deleteLater()
+        self.webview = QWebEngineView(self)
+
+        self.webview.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.webview.setStyleSheet("background: transparent;")
 
         self.webview.setGeometry(self.rect())
         self.webview.load(QUrl(url))
@@ -501,9 +509,7 @@ class MediaWindow(QWidget):
 
     def _start_web_scroll(self, ok):
 
-        self.logger.write(self.role, 
-            f"[Web] [{self.role}] start_web_scroll "
-        )
+        # self.logger.write(self.role,  f"[Web] [{self.role}] start_web_scroll " )
 
         if not ok:
             return
@@ -527,9 +533,7 @@ class MediaWindow(QWidget):
 
         self.webview.page().runJavaScript(js)
 
-        self.logger.write(self.role, 
-            f"[Web] [{self.role}] start_web_scroll END"
-        )
+        # self.logger.write(self.role, f"[Web] [{self.role}] start_web_scroll END")
 
     def _close_web_and_next(self):
 
@@ -537,15 +541,20 @@ class MediaWindow(QWidget):
             f"[Web] [{self.role}] close_web_end_next() "
         )
 
-        # WebView を隠す（破棄しない）
-        if hasattr(self, "webview"):
-            self.webview.hide()
-            self.webview.lower()  # Z-order を下げる
+        # # WebView を隠す（破棄しない）
+        # if hasattr(self, "webview"):
+        #     self.webview.hide()
+        #     self.webview.lower()  # Z-order を下げる
 
         # ★ スクロール停止
         self.webview.page().runJavaScript(
             "if (window._scrollTimer) clearInterval(window._scrollTimer);"
         )
+
+        # WebView を破棄する
+        if hasattr(self, "webview") and self.webview is not None:
+            self.webview.deleteLater()
+            self.webview = None
 
         self.logger.write(self.role, 
             f"[Web] [{self.role}] close_web_end_next() END"
@@ -650,7 +659,8 @@ class MediaWindow(QWidget):
         self.overlay.setGeometry(self.rect())
 
         # ★ WebView もフルスクリーンに追従
-        self.webview.setGeometry(self.rect())
+        if self.webview is not None:
+            self.webview.setGeometry(self.rect())
 
         # ロゴ位置を再適用
         if self.logo_label.isVisible() and hasattr(self, "current_logo_pos"):
@@ -775,13 +785,13 @@ class MediaWindow(QWidget):
 
         state = self.player.get_state()
 
-        self.logger.write(self.role,
-            f"[_check_video_end() BEFORE] index={self.index} state={state} "
-            f"showing={getattr(self, '_showing', None)} "
-            f"transition_running={getattr(self, '_transition_running', None)} "
-            f"label_visible={self.label.isVisible()} "
-            f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
-        )
+        # self.logger.write(self.role,
+        #     f"[_check_video_end() BEFORE] index={self.index} state={state} "
+        #     f"showing={getattr(self, '_showing', None)} "
+        #     f"transition_running={getattr(self, '_transition_running', None)} "
+        #     f"label_visible={self.label.isVisible()} "
+        #     f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
+        # )
         
         # self.logger.write(self.role,
         #    f"[_check_video_end()] [{self.role}] index={self.index}  state ={state}")
@@ -1159,6 +1169,10 @@ class MediaWindow(QWidget):
         if hasattr(self, "_nexting"):
             self._nexting = False
 
+    def reset_webview(self):
+        if self.webview is not None:
+            self.webview.deleteLater()
+            self.webview = None
 
 def load_config():
 
@@ -1268,6 +1282,9 @@ class PairSync:
         # 範囲外なら 0 に戻す（ループ）
         if next_pair >= len(self.pairsA):
             next_pair = 0
+            self.winA.reset_webview()
+            if self.winB:
+                self.winB.reset_webview()
 
         # プレイリストフォルダ
         playlist_folder = self.playlist_folder
