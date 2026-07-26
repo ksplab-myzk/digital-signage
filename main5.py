@@ -9,6 +9,9 @@ import subprocess
 import re
 import configparser
 from pathlib import Path
+import datetime
+import argparse
+import psutil   # pip install psutil
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
@@ -1173,15 +1176,19 @@ def load_config():
         "pairs_b": config.get("playlist", "pairs_b", fallback="pairsB"),
         "path_a": config.get("playlist", "path_a", fallback="playlistA"),
         "path_b": config.get("playlist", "path_b", fallback="playlistB"),
-        
+
         "allow_single_when_b_missing": config.getboolean(
             "playlist", "allow_single_when_b_missing", fallback=True
         ),
+
+        "enable_time_control" : config.getboolean("system", "enable_time_control"),
+        "start_time" : config.get("system", "start_time"),
+        "end_time" : config.get("system", "end_time")
     }
 
 class PairSync:
 
-    def __init__(self, logger, playlist_folder, pairsA, pairsB):
+    def __init__(self, logger, playlist_folder, pairsA, pairsB, enable_time_control, start_time, end_time):
         self.current_pair = 0
         self.a_cycles = 0
         self.b_cycles = 0
@@ -1197,6 +1204,10 @@ class PairSync:
         self.pairsA = load_pairs(pairsA, playlist_folder)
         self.pairsB = load_pairs(pairsB, playlist_folder)
 
+        self.enable_time_control = enable_time_control
+        self.start_time = start_time
+        self.end_time = end_time
+
     def error(self, role, message):
         self.error_flag = True
         print(f"[PairSync] ERROR from {role}: {message}")
@@ -1208,6 +1219,11 @@ class PairSync:
     def finished(self, role):
 
         self.logger.write(role, f"finished() : role={role} 開始")
+
+        # --- 時刻チェック ---
+        if self.check_time_range():
+            self.logger.write(role, f"finished() : 終了時間経過 End")
+            sys.exit(0)
 
         if self.error_flag:
             return  # ★ エラー発生後はペア切り替え停止
@@ -1299,6 +1315,16 @@ class PairSync:
 
         self.logger.write("", f"next_pair() 終了")
 
+    def check_time_range(self):
+        if not self.enable_time_control:
+            return False
+
+        now = datetime.datetime.now().time()
+        ed = datetime.datetime.strptime(self.end_time, "%H:%M").time()
+
+        # 終了時間を過ぎたら True を返す
+        return now > ed
+
 def load_pairs(path: str, playlist_folder: str):
     base_dir = Path(__file__).resolve().parent
     p = base_dir / playlist_folder / path
@@ -1344,6 +1370,30 @@ def load_playlist_pair(base_a: str, base_b: str, pair_number: int, playlist_fold
     # B が無い場合は None のまま返す（fallback ロジックが後で処理）
     return playlistA, playlistB
 
+# 多重起動チェック
+LOCK_FILE = "digital_signage.lock"
+
+def check_single_instance():
+    if os.path.exists(LOCK_FILE):
+        # 既存の PID を読む
+        with open(LOCK_FILE, "r") as f:
+            pid = int(f.read().strip())
+
+        # PID が生きているか確認
+        if psutil.pid_exists(pid):
+            print("[WARN] 既に起動しています → 多重起動を終了します")
+            sys.exit(0)
+        else:
+            # 死んでいる PID → ロックファイルを削除して再作成
+            os.remove(LOCK_FILE)
+
+    # 新しい PID を書き込む
+    with open(LOCK_FILE, "w") as f:
+        f.write(str(os.getpid()))
+
+def cleanup_lock_file():
+    if os.path.exists(LOCK_FILE):
+        os.remove(LOCK_FILE)
 
 # ---------------------------------------------------------
 # メイン処理
@@ -1354,10 +1404,33 @@ def main():
     # ロガー
     logger = DailyLogger(base_dir="logs", prefix="signage_")
 
+    check_single_instance()
+
     cfg = load_config()
     mode = cfg["mode"]
     fallback_to_single = cfg["fallback_to_single"]
     allow_single_when_b_missing = cfg["allow_single_when_b_missing"]
+
+    enable_time_control = cfg["enable_time_control"]
+    start_time = cfg["start_time"]
+    end_time = cfg["end_time"]
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--time-control", action="store_true",
+                        help="時間制御を無効にする")
+    args = parser.parse_args()
+    if args.time_control:
+        enable_time_control = False
+
+    # 起動時刻の制御
+    if enable_time_control :
+        now = datetime.datetime.now().time()
+        st = datetime.datetime.strptime(start_time, "%H:%M").time()
+        ed = datetime.datetime.strptime(end_time, "%H:%M").time()
+
+        if not (st <= now <= ed):
+            print("[INFO] 動作時間外のため終了します")
+            sys.exit(0)
 
     playlist_folder = cfg["playlist_folder"]
     # base_a = cfg["path_a"].replace(".json", "")
@@ -1367,7 +1440,7 @@ def main():
     pairs_b = cfg["pairs_b"]
 
     # 同期エンジン
-    sync = PairSync(logger, playlist_folder, pairs_a, pairs_b)
+    sync = PairSync(logger, playlist_folder, pairs_a, pairs_b, enable_time_control, start_time, end_time)
 
     firstA = sync.pairsA[0]
     firstB = sync.pairsB[0]
@@ -1456,7 +1529,10 @@ def main():
         winA.showFullScreen()
 
         winA.show_media()
-        sys.exit(app.exec())
+        try:
+            sys.exit(app.exec())
+        finally:
+            cleanup_lock_file()
 
     # -----------------------------------------------------
     # 2画面モード
@@ -1481,8 +1557,10 @@ def main():
         winA.show_media()
         winB.show_media()
 
-        sys.exit(app.exec())
-
+        try:
+            sys.exit(app.exec())
+        finally:
+            cleanup_lock_file()
 
 # ---------------------------------------------------------
 # エントリーポイント
