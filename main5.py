@@ -742,6 +742,10 @@ class MediaWindow(QWidget):
         media = self.vlc_instance.media_new(item["path"])
         self.player.set_media(media)
 
+        # ★ VLC のスケーリング設定（mac の暫定対処）
+        self.player.video_set_scale(0)              # 自動スケーリング
+        self.player.video_set_aspect_ratio("16:9")  # 画面比率固定
+        
         win_id = int(self.winId())
 
         # OSごとに埋め込み方法を変える
