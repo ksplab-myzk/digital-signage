@@ -754,7 +754,9 @@ class MediaWindow(QWidget):
         elif platform.system() == "Linux":
             QTimer.singleShot(150, lambda: self.player.set_xwindow(win_id) or self.player.play())
         else:  # macOS
-            QTimer.singleShot(250, lambda: self.player.set_nsobject(win_id) or self.player.play())
+            QTimer.singleShot(500, lambda: self.player.set_nsobject(win_id) or self.player.play())
+            # 埋め込み後に強制リサイズ（再描画イベント発生）
+            QTimer.singleShot(600, lambda: self.resize(self.width(), self.height()))
 
         # ★元のロジック：動画終了監視（ポーリング）
         self._check_video_end()
