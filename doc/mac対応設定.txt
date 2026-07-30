@@ -1,0 +1,66 @@
+01 省エネ設定を完全無効化する
+深いスリープを防ぎ、Wake-on-LAN と caffeinate の動作を安定させるための必須設定。
+
+sudo pmset -a sleep 0
+sudo pmset -a displaysleep 0
+sudo pmset -a disksleep 0
+sudo pmset -a standby 0
+sudo pmset -a autopoweroff 0
+
+
+02 毎日 08:00 に自動復帰を設定
+Mac mini は poweron ではなく wake を使う。
+
+sudo pmset repeat wake MTWRFSU 08:00:00
+
+
+03 毎日 20:00 に自動スリープを設定
+サイネージ稼働時間外に自動的にスリープへ移行させる。
+
+sudo pmset repeat sleep MTWRFSU 20:00:00
+
+
+04 自動ログインを有効化
+サイネージを無人運用するために必須。
+
+システム設定 → ユーザとグループ → 自動ログイン
+
+
+05 LaunchAgent を配置して自動起動を設定
+ログイン後にサイネージを自動起動し、クラッシュ時は自動再起動する。
+
+~/Library/LaunchAgents/com.signage.autostart.plist を作成
+
+
+06 クラッシュ通知用ラッパースクリプトを設置
+サイネージの異常終了を検知し、Slack やメールに通知する。
+
+ signage_wrapper.sh を作成
+
+
+07 2画面フルスクリーンの安定化設定
+HDMI＋USB-C→HDMI の 2画面構成でフルスクリーンを安定させる。
+
+システム設定 → ディスプレイ
+
+
+08 Wake-on-LAN を有効化
+20:00 以降のメンテナンス時に LAN 内から起動できるようにする。
+
+システム設定 → 省エネルギー → ネットワークアクセスでスリープ解除
+
+
+メール通知の設定（macOS）
+
+/etc/postfix/main.cf に以下を追加：
+
+relayhost = [smtp.gmail.com]:587
+smtp_use_tls = yes
+smtp_sasl_auth_enable = yes
+smtp_sasl_password_maps = hash:/etc/postfix/sasl_passwd
+smtp_sasl_security_options = noanonymous
+
+
+/etc/postfix/sasl_passwd
+[smtp.gmail.com]:587 kspglab.miyazakidai@gmail.com:your_app_password
+

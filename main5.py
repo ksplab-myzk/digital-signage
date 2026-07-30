@@ -12,6 +12,7 @@ from pathlib import Path
 import datetime
 import argparse
 import psutil   # pip install psutil
+import gc
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
@@ -465,6 +466,7 @@ class MediaWindow(QWidget):
 
         if self.webview is not None:
             self.webview.deleteLater()
+
         self.webview = QWebEngineView(self)
 
         self.webview.setAttribute(Qt.WA_TranslucentBackground, True)
@@ -553,8 +555,11 @@ class MediaWindow(QWidget):
 
         # WebView を破棄する
         if hasattr(self, "webview") and self.webview is not None:
+            self.webview.setParent(None)
+            self.webview.page().deleteLater()
             self.webview.deleteLater()
             self.webview = None
+            gc.collect()
 
         self.logger.write(self.role, 
             f"[Web] [{self.role}] close_web_end_next() END"
@@ -1177,8 +1182,11 @@ class MediaWindow(QWidget):
 
     def reset_webview(self):
         if self.webview is not None:
+            self.webview.setParent(None)
+            self.webview.page().deleteLater()
             self.webview.deleteLater()
             self.webview = None
+            gc.collect()
 
 def load_config():
 
