@@ -48,3 +48,5 @@ Thumbs.db
 # vscode env
 .vscode
 develop/
+playlists_d/
+digital_signage.lock

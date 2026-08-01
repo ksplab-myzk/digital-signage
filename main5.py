@@ -30,7 +30,7 @@ from PySide6.QtWebEngineWidgets import QWebEngineView
 from logger import DailyLogger
 
 class MediaWindow(QWidget):
-    def __init__(self, playlist, app, role, sync, logger):
+    def __init__(self, playlist, app, role, sync, logger, pixmap_cache, scaled_cache):
         super().__init__()
 
         self.playlist = playlist
@@ -38,6 +38,8 @@ class MediaWindow(QWidget):
         self.app = app
         self.role = role      # "a" or "b"
         self.sync = sync      # ★ 追加
+        self.pixmap_cache = pixmap_cache
+        self.scaled_cache = scaled_cache
 
         self.setStyleSheet("background-color: black;")
         self.setWindowFlags(Qt.FramelessWindowHint)
@@ -78,7 +80,6 @@ class MediaWindow(QWidget):
         self.first_show = True       # 初回フラグ
 
         self.logo_label = QLabel(self)
-        # self.logo_label.setPixmap(QPixmap("logo.png"))
         self.logo_label.setAttribute(Qt.WA_TranslucentBackground)  # ★透過PNGに必須
         self.logo_label.setStyleSheet("background: transparent;")   # ★背景透明
         self.logo_label.setScaledContents(True)  # サイズ調整したい場合
@@ -98,6 +99,7 @@ class MediaWindow(QWidget):
 
         self.original_geometry = self.label.geometry()
 
+        # 黒画面(初回のみのためキャッシュ不要)
         self.black_pixmap = QPixmap(self.width(), self.height())
         self.black_pixmap.fill(Qt.black)
 
@@ -195,17 +197,26 @@ class MediaWindow(QWidget):
                 self.apply_text(item.get("text"))
                 self.apply_logo(item.get("logo"))
 
-                print(f"[DEBUG] loading image: {item['path']}")
-                pix = QPixmap(item["path"])
+                self.logger.write(self.role, f"[DEBUG] loading image: {item['path']}")
+
+                path = item["path"]
+                if path not in self.pixmap_cache:
+                    self.pixmap_cache[path] = QPixmap(path)
+
+                pix = self.pixmap_cache[path]
+
                 self.logger.write(self.role,
-                    f"[Image] [{self.role}] index={self.index} path={item['path']} isNull={pix.isNull()}"
+                    f"[Image] [{self.role}] index={self.index} path={path} isNull={pix.isNull()}"
                 )
                 if pix.isNull():
                     self.show_error(f"画像が読み込めません: {item['path']}")
                     return
 
                 print(f"[DEBUG] pix.isNull() = {pix.isNull()}")
-                scaled = self.get_scaled_pixmap(pix)
+
+                if path not in self.scaled_cache:
+                    self.scaled_cache[path] = self.get_scaled_pixmap(self.pixmap_cache[path])
+                scaled = self.scaled_cache[path]
 
                 self.logger.write(self.role, f"show_media() : image を表示開始")
 
@@ -270,12 +281,12 @@ class MediaWindow(QWidget):
                 self.apply_logo(item.get("logo"))
 
                 # 1. 動画開始前に黒背景を作る
-                black = QPixmap(self.width(), self.height())
-                black.fill(Qt.black)
+                # black = QPixmap(self.width(), self.height())
+                # black.fill(Qt.black)
 
                 # 2. トランジション実行（画像→黒）
                 transition = self.choose_transition()
-                transition.run(self.prev_pixmap, black, self._after_transition_video_start)
+                transition.run(self.prev_pixmap, self.black_pixmap, self._after_transition_video_start)
 
                 # 3. 動画再生は _after_transition_video_start() で開始
 
@@ -371,7 +382,9 @@ class MediaWindow(QWidget):
 
         page_path = self.pdf_pages[self.pdf_index]
 
-        pix = QPixmap(page_path)
+        if page_path not in self.pixmap_cache:
+            self.pixmap_cache[page_path] = QPixmap(page_path)
+        pix = self.pixmap_cache[page_path]
 
         orientation = item.get("orientation", None)
 
@@ -385,7 +398,9 @@ class MediaWindow(QWidget):
             if pix.height() > pix.width():
                 pix = pix.transformed(QTransform().rotate(90), Qt.SmoothTransformation)
 
-        scaled = self.get_scaled_pixmap(pix, orientation)
+        if page_path not in self.scaled_cache:
+            self.scaled_cache[page_path] = self.get_scaled_pixmap(self.pixmap_cache[page_path],orientation)
+        scaled = self.scaled_cache[page_path]
 
         # 初回
         if self.prev_pixmap is None:
@@ -567,26 +582,6 @@ class MediaWindow(QWidget):
 
         self._next_item()
 
-    def _convert_vimeo_url(self, url: str) -> str:
-        # すでに埋め込みURLならそのまま
-        if "player.vimeo.com/video" in url:
-            return url
-
-        # 通常URLから動画IDを抽出
-        # 例: https://vimeo.com/123456789
-        match = re.search(r"vimeo\.com/(\d+)", url)
-        if not match:
-            return url  # Vimeoでなければそのまま
-
-        video_id = match.group(1)
-
-        # 埋め込みURLを生成
-        embed_url = (
-            f"https://player.vimeo.com/video/{video_id}"
-            "?autoplay=1&muted=1&loop=1&title=0&byline=0&portrait=0"
-        )
-        return embed_url
-
     def _set_label_pixmap(self, pix, context=""):
         if pix is None or (hasattr(pix, "isNull") and pix.isNull()):
             print(f"[PIXMAP ERROR] {context} pixmap is None or null")
@@ -766,27 +761,6 @@ class MediaWindow(QWidget):
         # ★元のロジック：動画終了監視（ポーリング）
         self._check_video_end()
 
-    def _mac_video_start(self):
-        # NSView をセット
-        win_id = int(self.winId())
-        self.player.set_nsobject(win_id)
-
-        # 再生開始
-        self.player.play()
-
-        # ★ここでイベントハンドラを登録する（重要）
-        em = self.player.event_manager()
-        em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_video_end)
-
-    def _video_start(self):
-        self.player.play()
-        em = self.player.event_manager()
-        em.event_attach(vlc.EventType.MediaPlayerEndReached, self._on_video_end)
-
-    def _on_video_end(self, event):
-        print("Video ended")
-        self.next_step()
-
     def _check_video_end(self):
         if self.player is None:
             return
@@ -875,14 +849,15 @@ class MediaWindow(QWidget):
             print("detach_video_output error:", e)
 
     def _transition_from_video(self):
+
         # 動画停止
         if self.player:
             self.player.stop()
             self.player = None
 
         # 黒背景を old_pix として扱う
-        black = QPixmap(self.width(), self.height())
-        black.fill(Qt.black)
+        # black = QPixmap(self.width(), self.height())
+        # black.fill(Qt.black)
 
         # 次の画像を読み込む
         next_item = self.playlist[self.index]
@@ -893,17 +868,22 @@ class MediaWindow(QWidget):
             self.show_media()
             return
 
-        raw = QPixmap(next_item["path"])
+        if next_item["path"] not in self.pixmap_cache:
+            self.pixmap_cache[next_item["path"]] = QPixmap(next_item["path"])
+        raw = self.pixmap_cache[next_item["path"]]
+
         if raw.isNull():
             print(f"[TRANSITION ERROR] QPixmap({next_item['path']}) is null")
             self.show_media()  # とりあえず落ちないように逃がす
             return
 
-        next_pix = self.get_scaled_pixmap(QPixmap(next_item["path"]))
+        if next_item["path"] not in self.scaled_cache:
+            self.scaled_cache[next_item["path"]] = self.get_scaled_pixmap(self.pixmap_cache[next_item["path"]])
+        next_pix = self.self.scaled_cache[next_item["path"]]
 
         # トランジション実行（黒→画像）
         transition = self.choose_transition()
-        transition.run(black, next_pix, self._after_transition)
+        transition.run(self.black_pixmap, next_pix, self._after_transition)
 
     def _after_pdf_transition(self, item, scaled):
         self.prev_pixmap = scaled
@@ -1430,6 +1410,7 @@ def cleanup_lock_file():
 # メイン処理
 # ---------------------------------------------------------
 def main():
+
     app = QApplication(sys.argv)
 
     # ロガー
@@ -1461,6 +1442,7 @@ def main():
 
         if not (st <= now <= ed):
             print("[INFO] 動作時間外のため終了します")
+            logger.write("", "[INFO] 動作時間外のため終了します")
             sys.exit(0)
 
     playlist_folder = cfg["playlist_folder"]
@@ -1469,6 +1451,10 @@ def main():
 
     pairs_a = cfg["pairs_a"]
     pairs_b = cfg["pairs_b"]
+
+    # pixmapのキャッシュ
+    pixmap_cache = {}
+    scaled_cache = {}
 
     # 同期エンジン
     sync = PairSync(logger, playlist_folder, pairs_a, pairs_b, enable_time_control, start_time, end_time)
@@ -1480,6 +1466,7 @@ def main():
     screen_count = len(screens)
 
     print(f"[INFO] Requested mode={mode}, screens={screen_count}")
+    logger.write("", f"[INFO] Requested mode={mode}, screens={screen_count}")
 
     # -----------------------------------------------------
     # ペア番号 1 を読み込む
@@ -1504,47 +1491,8 @@ def main():
 
     sync.mode = mode
 
-    # -----------------------------------------------------
-    # next_step（ペア番号の自動進行）
-    # -----------------------------------------------------
     winA = None
     winB = None
-
-    def next_step():
-        nonlocal winA, winB, mode, pair_number, playlistA, playlistB
-
-        # 次のアイテムへ
-        winA.index = (winA.index + 1) % len(winA.playlist)
-        winA.show_media()
-
-        if mode == "dual":
-            winB.index = (winB.index + 1) % len(winB.playlist)
-            winB.show_media()
-
-        # ペアの最後まで再生したら次のペアへ
-        if winA.index == 0:  # A のループ完了でペア切替
-            pair_number += 1
-
-            # 次のペアを読み込む
-            nextA, nextB = load_playlist_pair(base_a, base_b, pair_number)
-
-            if not nextA:
-                # ペアが無い → 1 に戻る
-                pair_number = 1
-                nextA, nextB = load_playlist_pair(base_a, base_b, pair_number)
-
-            playlistA = nextA
-            winA.playlist = playlistA
-            winA.index = 0
-
-            if mode == "dual":
-                if nextB:
-                    playlistB = nextB
-                    winB.playlist = playlistB
-                    winB.index = 0
-                else:
-                    print("[WARN] B の次ペアが無い → A のみ再生に切替")
-                    mode = "single"
 
     # -----------------------------------------------------
     # 1画面モード
@@ -1552,7 +1500,7 @@ def main():
     if mode == "single":
         print("[INFO] Running in SINGLE display mode")
 
-        winA = MediaWindow(playlistA, app, "A", sync, logger)
+        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache)
         sync.register_windows(winA, None)
 
         geoA = screens[0].geometry()
@@ -1571,8 +1519,8 @@ def main():
     else:
         print("[INFO] Running in DUAL display mode")
 
-        winA = MediaWindow(playlistA, app, "A", sync, logger)
-        winB = MediaWindow(playlistB, app, "B", sync, logger)
+        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache)
+        winB = MediaWindow(playlistB, app, "B", sync, logger, pixmap_cache, scaled_cache)
 
         sync.register_windows(winA, winB)
 

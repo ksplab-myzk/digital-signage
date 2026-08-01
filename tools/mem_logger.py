@@ -61,7 +61,7 @@ def main():
 
         log("---")
 
-        time.sleep(60)  # 1分ごと
+        time.sleep(10)  # 1分ごと
 
 if __name__ == "__main__":
     main()
