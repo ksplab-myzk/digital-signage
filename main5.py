@@ -879,7 +879,7 @@ class MediaWindow(QWidget):
 
         if next_item["path"] not in self.scaled_cache:
             self.scaled_cache[next_item["path"]] = self.get_scaled_pixmap(self.pixmap_cache[next_item["path"]])
-        next_pix = self.self.scaled_cache[next_item["path"]]
+        next_pix = self.scaled_cache[next_item["path"]]
 
         # トランジション実行（黒→画像）
         transition = self.choose_transition()
