@@ -1191,12 +1191,15 @@ def load_config():
 
         "enable_time_control" : config.getboolean("system", "enable_time_control"),
         "start_time" : config.get("system", "start_time"),
-        "end_time" : config.get("system", "end_time")
+        "end_time" : config.get("system", "end_time"),
+        "shared_mode" : config.get("system", "shared_mode"),
+        "shared_path" : config.get("system", "shared_path")
     }
 
 class PairSync:
 
-    def __init__(self, logger, playlist_folder, pairsA, pairsB, enable_time_control, start_time, end_time):
+    def __init__(self, logger, playlist_folder, pairsA, pairsB, 
+                 enable_time_control, start_time, end_time, shared_mode, shared_path):
         self.current_pair = 0
         self.a_cycles = 0
         self.b_cycles = 0
@@ -1215,6 +1218,22 @@ class PairSync:
         self.enable_time_control = enable_time_control
         self.start_time = start_time
         self.end_time = end_time
+
+        self.shared_mode = shared_mode
+        self.shared_path = shared_path
+
+        self.last_pair = -1
+
+        # 初回にshared_countを書き込み
+        if self.shared_mode == "shared_main":
+            self.write_shared_json()
+
+        if self.shared_mode == "shared_sub":
+            shared_pair = self.check_shared_json()  # JSONから読み取る
+            if shared_pair is None:
+                self.logger.write("", "next_pair() shared JSON 読み込み失敗")
+                return
+            self.current_pair = shared_pair
 
     def error(self, role, message):
         self.error_flag = True
@@ -1280,6 +1299,17 @@ class PairSync:
             if self.winB:
                 self.winB.reset_webview()
 
+        # --- shared_sub の場合は共有ペアを反映する ---
+        if self.shared_mode == "shared_sub":
+            shared_pair = self.check_shared_json()  # JSONから読み取る
+            if shared_pair is None:
+                self.logger.write("", "next_pair() shared JSON 読み込み失敗")
+                return
+
+            # ★ サブ側は next_pair を計算しない
+            next_pair = shared_pair
+            self.logger.write("", f"next_pair() shared_sub → next_pair={next_pair}")
+
         # プレイリストフォルダ
         playlist_folder = self.playlist_folder
 
@@ -1301,10 +1331,12 @@ class PairSync:
             # カウンタだけリセットして同じペアを続行
             self.a_cycles = 0
             self.b_cycles = 0
-            return
+            # return
 
         # ペア番号を更新
         self.current_pair = next_pair
+        if self.shared_mode == "shared_main":
+            self.write_shared_json()
 
         # カウンタリセット
         self.a_cycles = 0
@@ -1335,6 +1367,38 @@ class PairSync:
 
         # 終了時間を過ぎたら True を返す
         return now > ed
+
+    def write_shared_json(self):
+
+        self.logger.write("",f"write_shared_json() : mode={self.shared_mode} 開始")
+
+        data = {
+            "pair": self.current_pair,
+            "timestamp": datetime.datetime.now().isoformat()
+        }
+        try:
+            with open(self.shared_path, "w") as f:
+                json.dump(data, f)
+            print(f"[Main] write pair={self.current_pair}")
+        except Exception as e:
+            print(f"[Main] write error: {e}")
+
+        self.logger.write("",f"write_shared_json() : mode={self.shared_mode} 終了")
+
+    def check_shared_json(self):
+        try:
+            with open(self.shared_path, "r") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"[Sub] read error: {e}")
+            return
+
+        pair = data.get("pair", -1)
+
+        if pair != self.last_pair:
+            self.last_pair = pair
+
+        return(pair)
 
 def load_pairs(path: str, playlist_folder: str):
     base_dir = Path(__file__).resolve().parent
@@ -1406,6 +1470,22 @@ def cleanup_lock_file():
     if os.path.exists(LOCK_FILE):
         os.remove(LOCK_FILE)
 
+def detect_shared_role(cfg):
+    mode = cfg["shared_mode"]
+
+    if mode == "single":
+        role = "single"
+    elif mode == "shared_main":
+        role = "shared_main"
+    elif mode == "shared_sub":
+        role = "shared_sub"
+    else:
+        role = "single"
+
+    print(f"[SharedMode] role={role}")
+
+    return(role)
+
 # ---------------------------------------------------------
 # メイン処理
 # ---------------------------------------------------------
@@ -1445,6 +1525,9 @@ def main():
             logger.write("", "[INFO] 動作時間外のため終了します")
             sys.exit(0)
 
+    # shared_mode設定
+    shared_mode = detect_shared_role(cfg)
+ 
     playlist_folder = cfg["playlist_folder"]
     # base_a = cfg["path_a"].replace(".json", "")
     # base_b = cfg["path_b"].replace(".json", "")
@@ -1457,10 +1540,11 @@ def main():
     scaled_cache = {}
 
     # 同期エンジン
-    sync = PairSync(logger, playlist_folder, pairs_a, pairs_b, enable_time_control, start_time, end_time)
+    sync = PairSync(logger, playlist_folder, pairs_a, pairs_b, 
+                    enable_time_control, start_time, end_time, shared_mode, cfg["shared_path"])
 
-    firstA = sync.pairsA[0]
-    firstB = sync.pairsB[0]
+    firstA = sync.pairsA[sync.current_pair]
+    firstB = sync.pairsB[sync.current_pair]
 
     screens = app.screens()
     screen_count = len(screens)
