@@ -1,0 +1,19 @@
+GIT
+
+[新規プロジェクト登録]
+
+git init
+.iginore準備
+
+[初回のコミット]
+git add .
+git status              # 何がステージされたか確認しておくと安心
+git commit -m "Initial commit"
+
+
+[GitHub登録]
+※先に、ポータルからNewでリポジトリを作成しておく
+
+git remote add origin https://github.com/ksplab-myzk/DisplayShowcase.git
+git branch -M main
+git push -u origin main
