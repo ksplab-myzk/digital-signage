@@ -13,6 +13,7 @@ import datetime
 import argparse
 import psutil   # pip install psutil
 import gc
+import time
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
@@ -292,13 +293,16 @@ class MediaWindow(QWidget):
 
             # ---- 外部アプリ ----
             elif media_type == "app":
-                self.process = QProcess(self)
-                self.process.start(item["path"])
-                duration = item.get("duration", None)
-                if duration:
-                    QTimer.singleShot(duration, self._next_item)
-                else:
-                    QTimer.singleShot(500, self._check_app_running)
+                self.show_app(item)
+                return
+
+                # self.process = QProcess(self)
+                # self.process.start(item["path"])
+                # duration = item.get("duration", None)
+                # if duration:
+                #     QTimer.singleShot(duration, self._next_item)
+                # else:
+                #     QTimer.singleShot(500, self._check_app_running)
 
             elif media_type == "web":
                 self.show_web(item)
@@ -422,13 +426,31 @@ class MediaWindow(QWidget):
         self.show_pdf_page(item)
 
     def show_app(self, item):
+        self.logger.write(self.role, f"show_app() : App Start ")
+
         self.apply_logo(item.get("logo"))
 
         cmd = item["command"]
         duration = item.get("duration", None)
 
-        # プロセス起動
+        # 起動前の python.exe を記録
+        before = {p.pid for p in psutil.process_iter(['pid', 'name']) if p.name() == "python.exe"}
+
         self.app_process = subprocess.Popen(cmd, shell=True)
+
+        time.sleep(0.5)
+
+        # 起動後の python.exe を記録
+        after = {p.pid for p in psutil.process_iter(['pid', 'name']) if p.name() == "python.exe"}
+
+        # 差分が本体 PID
+        new_pids = after - before
+        if new_pids:
+            self.real_pid = list(new_pids)[0]
+        else:
+            self.real_pid = self.app_process.pid
+
+        self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid}")
 
         if duration:
             # duration 後に終了して次へ
@@ -438,12 +460,16 @@ class MediaWindow(QWidget):
             QTimer.singleShot(500, self._check_app_running)
 
     def _check_app_running(self):
+        self.logger.write(self.role, f"check_app_running() start")
         if self.app_process.poll() is None:
+            self.logger.write(self.role, f"check_app_running() app running!")
             QTimer.singleShot(500, self._check_app_running)
         else:
-            self.next_item()
+            self.logger.write(self.role, f"check_app_running() app ended!")
+            self._next_item()
 
     def _close_app_and_next(self):
+        self.logger.write(self.role, f"close_app_and_next() start")
         try:
             self.app_process.terminate()  # 正常終了を試みる
             QTimer.singleShot(500, self._kill_if_alive)
@@ -451,9 +477,17 @@ class MediaWindow(QWidget):
             pass
 
     def _kill_if_alive(self):
-        if self.app_process.poll() is None:
-            self.app_process.kill()  # 強制終了
-            self.next_item()
+        self.logger.write(self.role, f"kill_if_alive() start pid={self.real_pid}")
+
+        try:
+
+            p = psutil.Process(self.real_pid)
+            p.kill()
+
+        except Exception as e:
+            self.logger.write(self.role, f" kill_if_alive() error: {e}")
+
+        self._next_item()
 
     def show_web(self, item):
 
