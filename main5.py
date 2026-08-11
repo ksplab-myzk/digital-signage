@@ -1192,8 +1192,16 @@ def load_config():
         "enable_time_control" : config.getboolean("system", "enable_time_control"),
         "start_time" : config.get("system", "start_time"),
         "end_time" : config.get("system", "end_time"),
-        "shared_mode" : config.get("system", "shared_mode"),
-        "shared_path" : config.get("system", "shared_path")
+
+        "shared_mode" : config.get("shared", "shared_mode"),
+        "shared_path" : config.get("shared", "shared_path"),
+        "shared_host" : config.get("shared", "shared_host"),
+        "shared_share" : config.get("shared", "shared_share"),
+        "shared_user" : config.get("shared", "shared_user"),
+        "shared_pass" : config.get("shared", "shared_pass"),
+        "shared_mount" : config.get("shared", "shared_mount"),
+        "shared_drive" : config.get("shared", "shared_drive")
+
     }
 
 class PairSync:
@@ -1486,6 +1494,79 @@ def detect_shared_role(cfg):
 
     return(role)
 
+def connect_shared(logger, cfg):
+    ### --- 共有フォルダに接続する（Mac / Windows 両対応）
+    ### --- config.ini の設定に基づいて OS ごとに処理を切り替える
+
+    # shared_type = self.config.get("shared_type", "smb_windows")
+    host = cfg["shared_host"]
+    share = cfg["shared_share"]
+    user = cfg["shared_user"]
+    password = cfg["shared_pass"]
+    mount_point = cfg["shared_mount"]
+
+    os_name = platform.system()  # 'Darwin' or 'Windows'
+
+    # --- すでにマウント済みならスキップ ---
+    if os_name == "Darwin":
+        if os.path.ismount(mount_point):
+            logger.write("", f"SMB already mounted: {mount_point}")
+            return True
+
+    if os_name == "Windows":
+        # Windows は UNC パスが認証済みならそのまま使える
+        test_path = f"\\\\{host}\\{share}"
+        if os.path.exists(test_path):
+            logger.write("", f"SMB already accessible: {test_path}")
+            return True
+
+    # --- OSごとの接続処理 ---
+    if os_name == "Darwin":
+        # --- Mac の場合 ---
+        logger.write("", "connect_shared(): macOS → mount_smbfs")
+
+        # マウントポイント作成
+        if not os.path.exists(mount_point):
+            os.makedirs(mount_point)
+
+        cmd = f"mount_smbfs //{user}:{password}@{host}/{share} {mount_point}"
+
+        try:
+            subprocess.run(cmd, shell=True, check=True)
+            logger.write("", f"SMB mounted: {mount_point}")
+            return True
+        except Exception as e:
+            logger.write("ERROR", f"SMB mount failed: {e}")
+            return False
+
+    elif os_name == "Windows":
+        # --- Windows の場合 ---
+        logger.write("", "connect_shared(): Windows → net use")
+
+        # UNC パス
+        unc_path = f"\\\\{host}\\{share}"
+
+        # ドライブレターを固定（任意）
+        drive_letter = cfg["shared_drive"]
+
+        # 既存の接続を削除（安全策）
+        subprocess.run(f"net use {drive_letter}: /delete", shell=True)
+
+        # 接続コマンド
+        cmd = f'net use {drive_letter}: {unc_path} /user:{user} {password}'
+
+        try:
+            subprocess.run(cmd, shell=True, check=True)
+            logger.write("", f"SMB connected: {drive_letter}: → {unc_path}")
+            return True
+        except Exception as e:
+            logger.write("ERROR", f"SMB connect failed: {e}")
+            return False
+
+    else:
+        logger.write("ERROR", f"Unsupported OS: {os_name}")
+        return False
+
 # ---------------------------------------------------------
 # メイン処理
 # ---------------------------------------------------------
@@ -1525,8 +1606,12 @@ def main():
             logger.write("", "[INFO] 動作時間外のため終了します")
             sys.exit(0)
 
-    # shared_mode設定
+    # shared_mode設定(共有ファイルにアクセスできない場合はsingle)
     shared_mode = detect_shared_role(cfg)
+    if shared_mode != "single":
+        # 共有フォルダ接続
+        if connect_shared(logger, cfg) != True :
+            shared_mode = "single"
  
     playlist_folder = cfg["playlist_folder"]
     # base_a = cfg["path_a"].replace(".json", "")

@@ -20,3 +20,25 @@
     <true/>
 </dict>
 </plist>
+
+[配置]
+sudo cp com.signage.start.plist /Library/LaunchDaemons/
+sudo cp com.signage.logrotate.plist /Library/LaunchDaemons/
+
+sudo cp signage_logrotate.sh /usr/local/bin/
+sudo chmod 755 /usr/local/bin/signage_logrotate.sh
+
+[権限設定]
+sudo chown root:wheel /Library/LaunchDaemons/com.signage.start.plist
+sudo chmod 644 /Library/LaunchDaemons/com.signage.start.plist
+
+sudo chown root:wheel /Library/LaunchDaemons/com.signage.logrotate.plist
+sudo chmod 644 /Library/LaunchDaemons/com.signage.logrotate.plist
+
+[読み込み]
+sudo launchctl load /Library/LaunchDaemons/com.signage.start.plist
+sudo launchctl load /Library/LaunchDaemons/com.signage.logrotate.plist
+
+[動作確認]
+sudo launchctl list | grep signage
+sudo launchctl start com.signage.startup

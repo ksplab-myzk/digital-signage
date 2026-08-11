@@ -1,4 +1,0 @@
-[
-	{"type": "image", "path": "imagesA/jr_prog.png", "duration": 3000},
-	{"type": "web", "url": "https://www.sikaku.gr.jp/js/ks/","duration": 30000,"scroll": true, "scroll_speed": 5}
-]
