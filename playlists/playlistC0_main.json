@@ -1,0 +1,11 @@
+[
+	{"type":"video", "path":"videosA/MindPaletteNest_タイトル.mp4","duration": 10000},
+	{"overlay": {
+		"duration": 5000,
+		"items": [
+		"imagesC/card/weather.png",
+		"imagesC/card/weather_sum.png"
+		]
+	}
+	}
+]

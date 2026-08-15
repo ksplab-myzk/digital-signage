@@ -7,7 +7,6 @@ import random
 import json
 import subprocess
 import re
-import configparser
 from pathlib import Path
 import datetime
 import argparse
@@ -29,13 +28,21 @@ from transitions.cardflip import CardFlipTransition
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from logger import DailyLogger
+from common import load_config, check_single_instance, cleanup_lock_file, detect_shared_role, connect_shared
+from common import load_playlist, load_playlist_pair
+
+# Const値
+OVERLAY_HEIGHT = 400
 
 class MediaWindow(QWidget):
-    def __init__(self, playlist, app, role, sync, logger, pixmap_cache, scaled_cache):
+    def __init__(self, playlist_dict, app, role, sync, logger, pixmap_cache, scaled_cache, mode):
         super().__init__()
 
-        self.playlist = playlist
+        self.playlist = playlist_dict["items"]
+        self.playlist_overlay = playlist_dict["overlay"]
+
         self.index = 0
+        self.mode = mode
         self.app = app
         self.role = role      # "a" or "b"
         self.sync = sync      # ★ 追加
@@ -51,6 +58,7 @@ class MediaWindow(QWidget):
         self.label.setGeometry(self.rect())
         self.label.setAlignment(Qt.AlignCenter)
 
+        # 
         self.overlay = QLabel(self)
         self.overlay.setStyleSheet("background-color: black;")
         self.overlay.setGeometry(self.rect())
@@ -104,6 +112,10 @@ class MediaWindow(QWidget):
         self.black_pixmap = QPixmap(self.width(), self.height())
         self.black_pixmap.fill(Qt.black)
 
+        # ガジェット描画用
+        self.overlay_label = QLabel(self)
+        self.overlay_label.setStyleSheet("background: transparent;")
+        self.overlay_label.hide()
 
         # ESCで終了
         shortcut = QShortcut(QKeySequence("Escape"), self)
@@ -154,13 +166,6 @@ class MediaWindow(QWidget):
         try:
 
             self._transition_done = False
-
-            #if self.index >= len(self.playlist):
-            #    self.sync.finished(self.role)   # role = "a" or "b"
-                #self.index = 0
-
-            # if self.prev_pixmap is not None:
-            #    self.prev_pixmap = self.get_scaled_pixmap(self.prev_pixmap)
 
             # ★ まず前の Web を必ず片付ける（マスター／サブ共通）
             if hasattr(self, "webview") and self.webview is not None:
@@ -223,21 +228,21 @@ class MediaWindow(QWidget):
 
                 # 初回
                 if self.prev_pixmap is None:
-                    # self.label.setPixmap(scaled)
                     self._set_label_pixmap(scaled, "show_media:199")
 
                     self.prev_pixmap = scaled
                     QTimer.singleShot(item.get("duration", 5000), self._next_item)
-                    return
 
-                # ★ ランダムトランジション
-                transition = self.choose_transition()
-                self._transition_running = True
+                # 2回目以降
+                else :
+                    # ★ ランダムトランジション
+                    transition = self.choose_transition()
+                    self._transition_running = True
 
-                # ★ トランジション実行
-                transition.run(self.prev_pixmap, scaled, self._after_transition)
+                    # ★ トランジション実行
+                    transition.run(self.prev_pixmap, scaled, self._after_transition)
 
-                self.prev_pixmap = scaled
+                    self.prev_pixmap = scaled
 
             # ---- PDF画像フォルダ ----
             elif media_type == "pdf_images":
@@ -294,23 +299,16 @@ class MediaWindow(QWidget):
             # ---- 外部アプリ ----
             elif media_type == "app":
                 self.show_app(item)
-                return
-
-                # self.process = QProcess(self)
-                # self.process.start(item["path"])
-                # duration = item.get("duration", None)
-                # if duration:
-                #     QTimer.singleShot(duration, self._next_item)
-                # else:
-                #     QTimer.singleShot(500, self._check_app_running)
 
             elif media_type == "web":
                 self.show_web(item)
-                return
 
             # ★ プレイリスト1周終了を検知
             # if self.index == len(self.playlist) - 1:
             #    self.sync.finished(self.role)   # role = "a" or "b"
+
+            # オーバーレイ(ガジェット)表示開始
+            self.start_overlay()
 
         finally:
             self._showing = False
@@ -523,11 +521,6 @@ class MediaWindow(QWidget):
 
         self.webview.setGeometry(self.rect())
         self.webview.load(QUrl(url))
-
-        #self.label.lower()  
-        #self.label.hide()
-        #self.webview.show()
-        #self.webview.raise_()
 
         QTimer.singleShot(50, lambda: self._show_web_delayed(item))
 
@@ -753,6 +746,7 @@ class MediaWindow(QWidget):
         # if self.prev_pixmap is None and hasattr(self, "_transition_new_pix"):
         #     self._set_label_pixmap(self._transition_new_pix, "_after_transition:new_pix")
         #     self.prev_pixmap = self._transition_new_pix
+
         if  hasattr(self, "_transition_new_pix"):
             self._set_label_pixmap(self._transition_new_pix, "_after_transition:new_pix")
             self.prev_pixmap = self._transition_new_pix
@@ -799,21 +793,7 @@ class MediaWindow(QWidget):
         if self.player is None:
             return
 
-        # self.logger.write(self.role,
-        #    f"[_check_video_end()] [{self.role}] index={self.index}  Start")
-
         state = self.player.get_state()
-
-        # self.logger.write(self.role,
-        #     f"[_check_video_end() BEFORE] index={self.index} state={state} "
-        #     f"showing={getattr(self, '_showing', None)} "
-        #     f"transition_running={getattr(self, '_transition_running', None)} "
-        #     f"label_visible={self.label.isVisible()} "
-        #     f"web_visible={self.webview.isVisible() if hasattr(self, 'webview') else None}"
-        # )
-        
-        # self.logger.write(self.role,
-        #    f"[_check_video_end()] [{self.role}] index={self.index}  state ={state}")
 
         if state in (vlc.State.Ended, vlc.State.Stopped):
             # self._transition_from_video()   # ★ここが重要
@@ -1114,7 +1094,18 @@ class MediaWindow(QWidget):
 
             # pair = int(cmd.split("_")[-1])
             # fname = f"playlist{self.role.upper()}{pair}.json"
-            self.playlist = load_playlist(playlist_file, playlist_folder)
+
+            pl = load_playlist(playlist_file, playlist_folder)
+
+            self.playlist = pl["items"]
+            self.playlist_overlay = pl["overlay"]
+
+            # self.playlist = load_playlist(playlist_file, playlist_folder)
+
+            # シングルモード時のみ overlay を開始
+            if self.mode == "single" and self.playlist_overlay:
+                self.start_overlay()
+
             self.index = 0
             self.show_media()
 
@@ -1202,41 +1193,60 @@ class MediaWindow(QWidget):
             self.webview = None
             gc.collect()
 
-def load_config():
+    def start_overlay(self):
+        if not self.playlist_overlay:
+            self.overlay_label.hide()
+            return
 
-    config = configparser.ConfigParser()
-    with open("config.ini", "r", encoding="utf-8") as f:
-        config.read_file(f)
+        self.overlay_index = 0
+        duration = self.playlist_overlay.get("duration", 5000)
 
-    return {
-        "mode": config.get("display", "mode", fallback="dual").strip().lower(),
-        "fallback_to_single": config.getboolean("display", "fallback_to_single", fallback=True),
+        overlay_height =self.playlist_overlay.get("height", OVERLAY_HEIGHT)
 
-        "playlist_folder": config.get("playlist", "folder", fallback="playlists"),
+        # 画面下から overlay_height 分の位置に固定
+        self.overlay_label.setGeometry(
+            0,
+            self.height() - overlay_height,
+            self.width(),
+            overlay_height
+        )
+        # 最前面に出す
+        self.overlay_label.raise_()
 
-        "pairs_a": config.get("playlist", "pairs_a", fallback="pairsA"),
-        "pairs_b": config.get("playlist", "pairs_b", fallback="pairsB"),
-        "path_a": config.get("playlist", "path_a", fallback="playlistA"),
-        "path_b": config.get("playlist", "path_b", fallback="playlistB"),
+        self.overlay_timer = QTimer(self)
+        self.overlay_timer.timeout.connect(self._next_overlay)
+        self.overlay_timer.start(duration)
+        
+        self._next_overlay()  # 初回表示
 
-        "allow_single_when_b_missing": config.getboolean(
-            "playlist", "allow_single_when_b_missing", fallback=True
-        ),
+    def _next_overlay(self):
 
-        "enable_time_control" : config.getboolean("system", "enable_time_control"),
-        "start_time" : config.get("system", "start_time"),
-        "end_time" : config.get("system", "end_time"),
+        if not self.playlist_overlay:
+            return
 
-        "shared_mode" : config.get("shared", "shared_mode"),
-        "shared_path" : config.get("shared", "shared_path"),
-        "shared_host" : config.get("shared", "shared_host"),
-        "shared_share" : config.get("shared", "shared_share"),
-        "shared_user" : config.get("shared", "shared_user"),
-        "shared_pass" : config.get("shared", "shared_pass"),
-        "shared_mount" : config.get("shared", "shared_mount"),
-        "shared_drive" : config.get("shared", "shared_drive")
+        overlay = self.playlist_overlay
+        items = overlay["items"]
 
-    }
+        path = items[self.overlay_index]
+        self.overlay_index = (self.overlay_index + 1) % len(items)
+
+        pix = QPixmap(path)
+        scaled = pix.scaled(self.width(), overlay.get("height", OVERLAY_HEIGHT),
+                            Qt.KeepAspectRatio, Qt.SmoothTransformation)
+
+        self.overlay_label.setPixmap(scaled)
+        self.overlay_label.show()
+
+    def show_image(self, item):
+        overlay_height = self.playlist_overlay.get("height", OVERLAY_HEIGHT) if self.playlist_overlay else 0
+        main_height = self.height() - overlay_height
+
+        pix = QPixmap(item["path"])
+        scaled = pix.scaled(self.width(), main_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+        self.main_label.setPixmap(scaled)
+
+        self.apply_overlay()
+
 
 class PairSync:
 
@@ -1457,150 +1467,6 @@ def load_pairs(path: str, playlist_folder: str):
         return []
 
 
-def load_playlist(path: str, playlist_folder: str):
-
-    # playlist_folder/path を絶対パス化
-    base_dir = Path(__file__).resolve().parent
-    playlist_dir = base_dir / playlist_folder
-    p = playlist_dir / path
-
-    # p = Path(path)
-    if not p.exists():
-        return []
-    try:
-        with p.open(encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, list) else []
-    except:
-        return []
-
-def load_playlist_pair(base_a: str, base_b: str, pair_number: int, playlist_folder: str):
-    # file_a = f"{base_a}{pair_number}.json"
-    # file_b = f"{base_b}{pair_number}.json"
-
-    playlistA = load_playlist(base_a, playlist_folder)
-    playlistB = load_playlist(base_b, playlist_folder)
-
-    if not playlistA:
-        return None, None  # A が無いならこのペアは存在しない
-
-    # B が無い場合は None のまま返す（fallback ロジックが後で処理）
-    return playlistA, playlistB
-
-# 多重起動チェック
-LOCK_FILE = "digital_signage.lock"
-
-def check_single_instance():
-    if os.path.exists(LOCK_FILE):
-        # 既存の PID を読む
-        with open(LOCK_FILE, "r") as f:
-            pid = int(f.read().strip())
-
-        # PID が生きているか確認
-        if psutil.pid_exists(pid):
-            print("[WARN] 既に起動しています → 多重起動を終了します")
-            sys.exit(0)
-        else:
-            # 死んでいる PID → ロックファイルを削除して再作成
-            os.remove(LOCK_FILE)
-
-    # 新しい PID を書き込む
-    with open(LOCK_FILE, "w") as f:
-        f.write(str(os.getpid()))
-
-def cleanup_lock_file():
-    if os.path.exists(LOCK_FILE):
-        os.remove(LOCK_FILE)
-
-def detect_shared_role(cfg):
-    mode = cfg["shared_mode"]
-
-    if mode == "single":
-        role = "single"
-    elif mode == "shared_main":
-        role = "shared_main"
-    elif mode == "shared_sub":
-        role = "shared_sub"
-    else:
-        role = "single"
-
-    print(f"[SharedMode] role={role}")
-
-    return(role)
-
-def connect_shared(logger, cfg):
-    ### --- 共有フォルダに接続する（Mac / Windows 両対応）
-    ### --- config.ini の設定に基づいて OS ごとに処理を切り替える
-
-    # shared_type = self.config.get("shared_type", "smb_windows")
-    host = cfg["shared_host"]
-    share = cfg["shared_share"]
-    user = cfg["shared_user"]
-    password = cfg["shared_pass"]
-    mount_point = cfg["shared_mount"]
-
-    os_name = platform.system()  # 'Darwin' or 'Windows'
-
-    # --- すでにマウント済みならスキップ ---
-    if os_name == "Darwin":
-        if os.path.ismount(mount_point):
-            logger.write("", f"SMB already mounted: {mount_point}")
-            return True
-
-    if os_name == "Windows":
-        # Windows は UNC パスが認証済みならそのまま使える
-        test_path = f"\\\\{host}\\{share}"
-        if os.path.exists(test_path):
-            logger.write("", f"SMB already accessible: {test_path}")
-            return True
-
-    # --- OSごとの接続処理 ---
-    if os_name == "Darwin":
-        # --- Mac の場合 ---
-        logger.write("", "connect_shared(): macOS → mount_smbfs")
-
-        # マウントポイント作成
-        if not os.path.exists(mount_point):
-            os.makedirs(mount_point)
-
-        cmd = f"mount_smbfs //{user}:{password}@{host}/{share} {mount_point}"
-
-        try:
-            subprocess.run(cmd, shell=True, check=True)
-            logger.write("", f"SMB mounted: {mount_point}")
-            return True
-        except Exception as e:
-            logger.write("ERROR", f"SMB mount failed: {e}")
-            return False
-
-    elif os_name == "Windows":
-        # --- Windows の場合 ---
-        logger.write("", "connect_shared(): Windows → net use")
-
-        # UNC パス
-        unc_path = f"\\\\{host}\\{share}"
-
-        # ドライブレターを固定（任意）
-        drive_letter = cfg["shared_drive"]
-
-        # 既存の接続を削除（安全策）
-        subprocess.run(f"net use {drive_letter}: /delete", shell=True)
-
-        # 接続コマンド
-        cmd = f'net use {drive_letter}: {unc_path} /user:{user} {password}'
-
-        try:
-            subprocess.run(cmd, shell=True, check=True)
-            logger.write("", f"SMB connected: {drive_letter}: → {unc_path}")
-            return True
-        except Exception as e:
-            logger.write("ERROR", f"SMB connect failed: {e}")
-            return False
-
-    else:
-        logger.write("ERROR", f"Unsupported OS: {os_name}")
-        return False
-
 # ---------------------------------------------------------
 # メイン処理
 # ---------------------------------------------------------
@@ -1703,7 +1569,7 @@ def main():
     if mode == "single":
         print("[INFO] Running in SINGLE display mode")
 
-        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache)
+        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache, mode)
         sync.register_windows(winA, None)
 
         geoA = screens[0].geometry()
@@ -1722,8 +1588,8 @@ def main():
     else:
         print("[INFO] Running in DUAL display mode")
 
-        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache)
-        winB = MediaWindow(playlistB, app, "B", sync, logger, pixmap_cache, scaled_cache)
+        winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache, mode)
+        winB = MediaWindow(playlistB, app, "B", sync, logger, pixmap_cache, scaled_cache, mode)
 
         sync.register_windows(winA, winB)
 
