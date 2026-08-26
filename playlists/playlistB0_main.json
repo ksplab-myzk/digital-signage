@@ -1,3 +1,4 @@
 [
-	{"type": "image", "path": "imagesB/mind palette nest.png", "duration": 20000}
+	{"type": "image", "path": "imagesB/mind palette nest.png", "duration": 15000},
+	{"type": "image", "path": "imagesA/mpn_gray.png", "duration": 100}
 ]

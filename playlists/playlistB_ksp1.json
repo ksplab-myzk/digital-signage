@@ -1,3 +1,4 @@
 [
-	{"type": "image", "path": "imagesB/ksp_title1.png", "duration": 10000}
+	{"type": "image", "path": "imagesB/ksp_title1.png", "duration": 10000},
+	{"type": "image", "path": "imagesA/pg_gray.png", "duration": 100}
 ]

@@ -1,3 +1,4 @@
 [
-	{"type":"video", "path":"videosA/MindPaletteNest_タイトル.mp4","duration": 10000}
+	{"type":"video", "path":"videosA/MindPaletteNest_タイトル.mp4","duration": 10000},
+	{"type": "image", "path": "imagesA/mpn_blue.png", "duration": 100}
 ]

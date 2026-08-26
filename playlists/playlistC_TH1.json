@@ -1,3 +1,8 @@
 [
-	{"type": "image", "path": "imagesA/TH_title.png", "duration": 3000}
+	{"type":"video", "path":"videosC/マイクラマスター_完成動画.mp4"},
+	{"type":"video", "path":"videosC/マイクラ化学実験教室_完成動画.mp4"},
+	{"type":"video", "path":"videosC/マイクラ建築マラソン_完成動画.mp4"},
+	{"type":"video", "path":"videosC/マインクラフト_MOD作成_完成動画.mp4"},
+	{"type":"video", "path":"videosC/Roblox初級_完成動画.mp4"},
+	{"type":"video", "path":"videosC/Roblox中級_完成動画.mp4"}
 ]

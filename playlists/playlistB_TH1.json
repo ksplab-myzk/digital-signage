@@ -1,3 +1,4 @@
 [
-	{"type":"video", "path":"videosB/THプロモ動画_s.mp4","duration": 30000}
+	{"type":"video", "path":"videosB/THプロモ動画_s.mp4","duration": 30000},
+	{"type": "image", "path": "imagesA/tech_black2.png", "duration": 100}
 ]

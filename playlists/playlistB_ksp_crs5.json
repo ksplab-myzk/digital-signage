@@ -1,3 +1,4 @@
 [
-	{"type": "pdf_images", "folder": "pdf_files/ミドルコース",	 "orientation": "landscape"}
+	{"type": "pdf_images", "folder": "pdf_files/ミドルコース",	 "orientation": "landscape"},
+	{"type": "image", "path": "imagesA/pg_white.png", "duration": 100}
 ]
