@@ -1,2 +1,8 @@
+[ƒTƒCƒY•ÏŠ·]
+
+‡@ 
 D:\Tool\ffmpeg\bin\ffmpeg -i Tech_Title.mp4 -vf "scale=1920:1080:flags=lanczos,unsharp=5:5:1.0:5:5:0.0" -c:v libx264 -crf 18 -preset slow Tech_Title_fhd.mp4
+
+‡A 
+ffmpeg -i input_4k.mp4 -vf scale=1920:1080 -c:a copy output_1080p.mp4
 
