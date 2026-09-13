@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
+Sudo <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
 "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -38,7 +38,10 @@ sudo chmod 644 /Library/LaunchDaemons/com.signage.logrotate.plist
 [読み込み]
 sudo launchctl load /Library/LaunchDaemons/com.signage.start.plist
 sudo launchctl load /Library/LaunchDaemons/com.signage.logrotate.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.signage.start.plist
+
 
 [動作確認]
 sudo launchctl list | grep signage
-sudo launchctl start com.signage.startup
+sudo launchctl start com.signage.start
+launchctl kickstart -k gui/$(id -u)/com.signage.start
