@@ -167,6 +167,43 @@ class MediaWindow(QWidget):
             if process.poll() is not None or force:
                 self.app_process = None
 
+    def _hide_for_external_app(self):
+        if platform.system() != "Darwin":
+            return
+
+        self._external_app_window_hidden = self.isVisible()
+        self.hide()
+        self.app.processEvents()
+
+    def _activate_external_app(self):
+        if platform.system() != "Darwin":
+            return
+        process = getattr(self, "app_process", None)
+        if process is None or process.poll() is not None:
+            return
+
+        script = (
+            "tell application \"System Events\" to "
+            f"set frontmost of first process whose unix id is {process.pid} to true"
+        )
+        subprocess.run(
+            ["osascript", "-e", script],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def _restore_after_external_app(self):
+        if platform.system() != "Darwin":
+            return
+        if not getattr(self, "_external_app_window_hidden", False):
+            return
+
+        self.showFullScreen()
+        self.raise_()
+        self.activateWindow()
+        self._external_app_window_hidden = False
+
     def show_media(self):
 
         self.logger.write(self.role, f"show_media() : {self.role}: 開始")
@@ -469,8 +506,16 @@ class MediaWindow(QWidget):
         cmd = prepare_app_command(item["command"])
         duration = item.get("duration", None)
 
-        self.app_process = subprocess.Popen(cmd, shell=False)
+        self._hide_for_external_app()
+        try:
+            self.app_process = subprocess.Popen(cmd, shell=False)
+        except Exception:
+            self._restore_after_external_app()
+            raise
+
         self.real_pid = self.app_process.pid
+
+        QTimer.singleShot(500, self._activate_external_app)
 
         self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid}")
 
@@ -488,6 +533,7 @@ class MediaWindow(QWidget):
             QTimer.singleShot(500, self._check_app_running)
         else:
             self.logger.write(self.role, f"check_app_running() app ended!")
+            self._restore_after_external_app()
             self._next_item()
 
     def _close_app_and_next(self):
@@ -503,6 +549,7 @@ class MediaWindow(QWidget):
         except Exception as e:
             self.logger.write(self.role, f" kill_if_alive() error: {e}")
 
+        self._restore_after_external_app()
         self._next_item()
 
     def show_web(self, item):
