@@ -96,7 +96,7 @@ def connect_shared(logger, cfg):
     share = cfg["shared_share"]
     user = cfg["shared_user"]
     password = cfg["shared_pass"]
-    mount_point = cfg["shared_mount"]
+    mount_point = os.path.expanduser(str(cfg["shared_mount"]).strip())
 
     os_name = platform.system()  # 'Darwin' or 'Windows'
 
@@ -167,11 +167,12 @@ def resolve_shared_path(cfg):
     if platform.system() != "Darwin":
         return shared_path
 
-    mount_point = PurePosixPath(os.path.expanduser(str(cfg["shared_mount"])))
-    is_windows_unc = shared_path.startswith(("\\\\", "//"))
+    mount_point = PurePosixPath(os.path.expanduser(str(cfg["shared_mount"]).strip()))
+    normalized_path = shared_path.replace("\\", "/")
+    is_windows_unc = normalized_path.startswith("//")
 
-    if is_windows_unc or not shared_path.startswith("/"):
-        filename = PureWindowsPath(shared_path).name if is_windows_unc else PurePosixPath(shared_path).name
+    if is_windows_unc or not normalized_path.startswith("/"):
+        filename = PurePosixPath(normalized_path).name
         return str(mount_point / filename)
 
     return shared_path
