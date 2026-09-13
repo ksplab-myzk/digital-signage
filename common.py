@@ -168,11 +168,11 @@ def resolve_shared_path(cfg):
         return shared_path
 
     mount_point = PurePosixPath(os.path.expanduser(str(cfg["shared_mount"]).strip()))
-    normalized_path = shared_path.replace("\\", "/")
-    is_windows_path = "\\" in shared_path or normalized_path.startswith("//")
+    normalized_path = shared_path.replace("\\", "/").replace("¥", "/")
+    is_windows_path = normalized_path.startswith("//") or "\\" in shared_path or "¥" in shared_path
 
     if is_windows_path or not normalized_path.startswith("/"):
-        filename = PureWindowsPath(shared_path).name if is_windows_path else PurePosixPath(normalized_path).name
+        filename = normalized_path.rstrip("/").rsplit("/", 1)[-1]
         return str(mount_point / filename)
 
     return shared_path
