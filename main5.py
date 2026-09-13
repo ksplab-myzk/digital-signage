@@ -7,6 +7,7 @@ import random
 import json
 import subprocess
 import re
+import shlex
 from pathlib import Path
 import datetime
 import argparse
@@ -28,11 +29,27 @@ from transitions.cardflip import CardFlipTransition
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
 from logger import DailyLogger
-from common import load_config, check_single_instance, cleanup_lock_file, detect_shared_role, connect_shared
+from common import (
+    load_config,
+    check_single_instance,
+    cleanup_lock_file,
+    detect_shared_role,
+    connect_shared,
+    resolve_shared_path,
+)
 from common import load_playlist, load_playlist_pair
 
 # Const値
 OVERLAY_HEIGHT = 400
+
+
+def prepare_app_command(command):
+    if isinstance(command, list):
+        return command
+    if not isinstance(command, str):
+        raise TypeError("app command must be a string or a list")
+
+    return shlex.split(command, posix=platform.system() != "Windows")
 
 class MediaWindow(QWidget):
     def __init__(self, playlist_dict, app, role, sync, logger, pixmap_cache, scaled_cache, mode):
@@ -127,6 +144,29 @@ class MediaWindow(QWidget):
             self.player.release()
             self.player = None
 
+    def _terminate_app_process(self, force=False):
+        process = getattr(self, "app_process", None)
+        if process is None:
+            return
+
+        try:
+            parent = psutil.Process(process.pid)
+            processes = [parent, *parent.children(recursive=True)]
+
+            for child in processes[1:]:
+                child.terminate()
+            parent.terminate()
+
+            _, alive = psutil.wait_procs(processes, timeout=0.5)
+            if force:
+                for child in alive:
+                    child.kill()
+        except psutil.NoSuchProcess:
+            pass
+        finally:
+            if process.poll() is not None or force:
+                self.app_process = None
+
     def show_media(self):
 
         self.logger.write(self.role, f"show_media() : {self.role}: 開始")
@@ -186,9 +226,7 @@ class MediaWindow(QWidget):
                 self.player = None
 
             # --- 外部アプリ停止 ---
-            if hasattr(self, "process") and self.process:
-                self.process.terminate()
-                self.process = None
+            self._terminate_app_process(force=True)
 
             # ★ 前回のアニメーションを全部止める
             # for anim in self.animations:
@@ -428,25 +466,11 @@ class MediaWindow(QWidget):
 
         self.apply_logo(item.get("logo"))
 
-        cmd = item["command"]
+        cmd = prepare_app_command(item["command"])
         duration = item.get("duration", None)
 
-        # 起動前の python.exe を記録
-        before = {p.pid for p in psutil.process_iter(['pid', 'name']) if p.name() == "python.exe"}
-
-        self.app_process = subprocess.Popen(cmd, shell=True)
-
-        time.sleep(0.5)
-
-        # 起動後の python.exe を記録
-        after = {p.pid for p in psutil.process_iter(['pid', 'name']) if p.name() == "python.exe"}
-
-        # 差分が本体 PID
-        new_pids = after - before
-        if new_pids:
-            self.real_pid = list(new_pids)[0]
-        else:
-            self.real_pid = self.app_process.pid
+        self.app_process = subprocess.Popen(cmd, shell=False)
+        self.real_pid = self.app_process.pid
 
         self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid}")
 
@@ -468,20 +492,14 @@ class MediaWindow(QWidget):
 
     def _close_app_and_next(self):
         self.logger.write(self.role, f"close_app_and_next() start")
-        try:
-            self.app_process.terminate()  # 正常終了を試みる
-            QTimer.singleShot(500, self._kill_if_alive)
-        except:
-            pass
+        self._terminate_app_process()
+        QTimer.singleShot(500, self._kill_if_alive)
 
     def _kill_if_alive(self):
         self.logger.write(self.role, f"kill_if_alive() start pid={self.real_pid}")
 
         try:
-
-            p = psutil.Process(self.real_pid)
-            p.kill()
-
+            self._terminate_app_process(force=True)
         except Exception as e:
             self.logger.write(self.role, f" kill_if_alive() error: {e}")
 
@@ -1472,14 +1490,27 @@ def load_pairs(path: str, playlist_folder: str):
 # ---------------------------------------------------------
 def main():
 
+    cfg = load_config()
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("-t", "--time-control", action="store_true",
+                        help="時間制御を無効にする")
+    log_group = parser.add_mutually_exclusive_group()
+    log_group.add_argument("--log-level", choices=("error", "info", "debug"),
+                           help="ログレベルを指定する")
+    log_group.add_argument("--debug", dest="log_level", action="store_const",
+                           const="debug", help="デバッグログを有効にする")
+    args = parser.parse_args()
+
+    log_level = args.log_level or cfg["log_level"]
+
     app = QApplication(sys.argv)
 
     # ロガー
-    logger = DailyLogger(base_dir="logs", prefix="signage_")
+    logger = DailyLogger(base_dir="logs", prefix="signage_", level=log_level)
 
     check_single_instance()
 
-    cfg = load_config()
     mode = cfg["mode"]
     fallback_to_single = cfg["fallback_to_single"]
     allow_single_when_b_missing = cfg["allow_single_when_b_missing"]
@@ -1488,10 +1519,6 @@ def main():
     start_time = cfg["start_time"]
     end_time = cfg["end_time"]
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument("-t", "--time-control", action="store_true",
-                        help="時間制御を無効にする")
-    args = parser.parse_args()
     if args.time_control:
         enable_time_control = False
 
@@ -1508,10 +1535,14 @@ def main():
 
     # shared_mode設定(共有ファイルにアクセスできない場合はsingle)
     shared_mode = detect_shared_role(cfg)
+    shared_path = cfg["shared_path"]
     if shared_mode != "single":
         # 共有フォルダ接続
         if connect_shared(logger, cfg) != True :
             shared_mode = "single"
+        else:
+            shared_path = resolve_shared_path(cfg)
+            logger.write("", f"[Shared] pair path={shared_path}")
  
     playlist_folder = cfg["playlist_folder"]
     # base_a = cfg["path_a"].replace(".json", "")
@@ -1526,7 +1557,7 @@ def main():
 
     # 同期エンジン
     sync = PairSync(logger, playlist_folder, pairs_a, pairs_b, 
-                    enable_time_control, start_time, end_time, shared_mode, cfg["shared_path"])
+                    enable_time_control, start_time, end_time, shared_mode, shared_path)
 
     firstA = sync.pairsA[sync.current_pair]
     firstB = sync.pairsB[sync.current_pair]
