@@ -1,0 +1,7 @@
+launchctl bootout gui/$(id -u)/com.signage.start
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.signage.start.plist
+launchctl kickstart -k gui/$(id -u)/com.signage.start
+launchctl print gui/$(id -u) | grep com.signage.start
+launchctl print gui/$(id -u)/com.signage.start
+
+launchctl list | grep signage

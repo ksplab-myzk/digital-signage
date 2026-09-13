@@ -45,11 +45,16 @@ OVERLAY_HEIGHT = 400
 
 def prepare_app_command(command):
     if isinstance(command, list):
-        return command
-    if not isinstance(command, str):
+        args = command.copy()
+    elif isinstance(command, str):
+        args = shlex.split(command, posix=platform.system() != "Windows")
+    else:
         raise TypeError("app command must be a string or a list")
 
-    return shlex.split(command, posix=platform.system() != "Windows")
+    if args and args[0] in ("python", "python3"):
+        args[0] = sys.executable
+
+    return args
 
 class MediaWindow(QWidget):
     def __init__(self, playlist_dict, app, role, sync, logger, pixmap_cache, scaled_cache, mode):
