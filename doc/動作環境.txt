@@ -1,0 +1,5 @@
+﻿必要なライブラリ
+
+・pip install python-vlc
+・pip install psutil
+・pip install Qt6
