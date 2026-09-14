@@ -5,12 +5,14 @@ import platform
 import subprocess
 import os
 import json
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
+
+BASE_DIR = Path(__file__).resolve().parent
 
 def load_config():
 
     config = configparser.ConfigParser()
-    with open("config.ini", "r", encoding="utf-8") as f:
+    with open(BASE_DIR / "config.ini", "r", encoding="utf-8") as f:
         config.read_file(f)
 
     return {
@@ -31,6 +33,7 @@ def load_config():
         "enable_time_control" : config.getboolean("system", "enable_time_control"),
         "start_time" : config.get("system", "start_time"),
         "end_time" : config.get("system", "end_time"),
+        "log_level" : config.get("logging", "level", fallback="info").strip().lower(),
 
         "shared_mode" : config.get("shared", "shared_mode"),
         "shared_path" : config.get("shared", "shared_path"),
@@ -44,7 +47,7 @@ def load_config():
     }
 
 # 多重起動チェック
-LOCK_FILE = "digital_signage.lock"
+LOCK_FILE = BASE_DIR / "digital_signage.lock"
 
 def check_single_instance():
     if os.path.exists(LOCK_FILE):
@@ -93,7 +96,7 @@ def connect_shared(logger, cfg):
     share = cfg["shared_share"]
     user = cfg["shared_user"]
     password = cfg["shared_pass"]
-    mount_point = cfg["shared_mount"]
+    mount_point = os.path.expanduser(str(cfg["shared_mount"]).strip())
 
     os_name = platform.system()  # 'Darwin' or 'Windows'
 
@@ -126,7 +129,7 @@ def connect_shared(logger, cfg):
             logger.write("", f"SMB mounted: {mount_point}")
             return True
         except Exception as e:
-            logger.write("ERROR", f"SMB mount failed: {e}")
+            logger.write("", f"SMB mount failed: {e}", level="error")
             return False
 
     elif os_name == "Windows":
@@ -150,12 +153,29 @@ def connect_shared(logger, cfg):
             logger.write("", f"SMB connected: {drive_letter}: → {unc_path}")
             return True
         except Exception as e:
-            logger.write("ERROR", f"SMB connect failed: {e}")
+            logger.write("", f"SMB connect failed: {e}", level="error")
             return False
 
     else:
-        logger.write("ERROR", f"Unsupported OS: {os_name}")
+        logger.write("", f"Unsupported OS: {os_name}", level="error")
         return False
+
+
+def resolve_shared_path(cfg):
+    shared_path = str(cfg["shared_path"]).strip()
+
+    if platform.system() != "Darwin":
+        return shared_path
+
+    mount_point = PurePosixPath(os.path.expanduser(str(cfg["shared_mount"]).strip()))
+    normalized_path = shared_path.replace("\\", "/").replace("¥", "/")
+    is_windows_path = normalized_path.startswith("//") or "\\" in shared_path or "¥" in shared_path
+
+    if is_windows_path or not normalized_path.startswith("/"):
+        filename = normalized_path.rstrip("/").rsplit("/", 1)[-1]
+        return str(mount_point / filename)
+
+    return shared_path
 
 
 def load_playlist(path: str, playlist_folder: str):

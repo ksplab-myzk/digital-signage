@@ -1,3 +1,3 @@
 [
-	{"type": "app", "command": "python D:\\Programming\\DisplayShowcase\\PictureDisplaycase_v1.2.py", "duration": 70000}
+	{"type": "app", "command": "python /Users/signage/digital-signage/addon/DisplayShowcase/PictureDisplaycase_v1.3.py", "duration": 70000}
 ]
