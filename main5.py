@@ -176,9 +176,7 @@ class MediaWindow(QWidget):
         if platform.system() != "Darwin":
             return
 
-        self._external_app_window_hidden = self.isVisible()
-        self.hide()
-        self.app.processEvents()
+        self.sync.hide_for_external_app(self)
 
     def _activate_external_app(self):
         if platform.system() != "Darwin":
@@ -201,13 +199,8 @@ class MediaWindow(QWidget):
     def _restore_after_external_app(self):
         if platform.system() != "Darwin":
             return
-        if not getattr(self, "_external_app_window_hidden", False):
-            return
 
-        self.showFullScreen()
-        self.raise_()
-        self.activateWindow()
-        self._external_app_window_hidden = False
+        self.sync.restore_after_external_app(self)
 
     def show_media(self):
 
@@ -1357,6 +1350,8 @@ class PairSync:
                 return
             self.current_pair = shared_pair
 
+        self._external_app_windows_hidden = []
+
     def error(self, role, message):
         self.error_flag = True
         print(f"[PairSync] ERROR from {role}: {message}")
@@ -1364,6 +1359,30 @@ class PairSync:
     def register_windows(self, winA, winB):
         self.winA = winA
         self.winB = winB
+
+    def hide_for_external_app(self, window):
+        if platform.system() != "Darwin":
+            return
+
+        self._external_app_windows_hidden = []
+        if window is not None and window.isVisible():
+            self._external_app_windows_hidden.append(window)
+            window.hide()
+
+        window.app.processEvents()
+
+    def restore_after_external_app(self, window):
+        if platform.system() != "Darwin":
+            return
+
+        if window not in self._external_app_windows_hidden:
+            return
+
+        self._external_app_windows_hidden.remove(window)
+        window.showFullScreen()
+
+        window.raise_()
+        window.activateWindow()
 
     def finished(self, role):
 
