@@ -500,6 +500,7 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"show_app() : App Start ")
 
         self.apply_logo(item.get("logo"))
+        self._app_finished = False
 
         cmd = prepare_app_command(item["command"])
         duration = item.get("duration", None)
@@ -526,13 +527,16 @@ class MediaWindow(QWidget):
 
     def _check_app_running(self):
         self.logger.write(self.role, f"check_app_running() start")
-        if self.app_process.poll() is None:
+        process = getattr(self, "app_process", None)
+        if process is None:
+            return
+
+        if process.poll() is None:
             self.logger.write(self.role, f"check_app_running() app running!")
             QTimer.singleShot(500, self._check_app_running)
         else:
             self.logger.write(self.role, f"check_app_running() app ended!")
-            self._restore_after_external_app()
-            self._next_item()
+            self._finish_app_and_next()
 
     def _close_app_and_next(self):
         self.logger.write(self.role, f"close_app_and_next() start")
@@ -543,12 +547,19 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"kill_if_alive() start pid={self.real_pid}")
 
         try:
-            self._terminate_app_process(force=True)
+            self._finish_app_and_next()
         except Exception as e:
             self.logger.write(self.role, f" kill_if_alive() error: {e}")
 
+    def _finish_app_and_next(self):
+        if getattr(self, "_app_finished", False):
+            return
+
+        self._app_finished = True
+        self._terminate_app_process(force=True)
         self._restore_after_external_app()
-        self._next_item()
+        self.app.processEvents()
+        QTimer.singleShot(100, self._next_item)
 
     def show_web(self, item):
 
