@@ -56,6 +56,14 @@ def prepare_app_command(command):
 
     return args
 
+
+def show_signage_window(window, geometry):
+    window.setGeometry(geometry)
+    if platform.system() == "Darwin":
+        window.show()
+    else:
+        window.showFullScreen()
+
 class MediaWindow(QWidget):
     def __init__(self, playlist_dict, app, role, sync, logger, pixmap_cache, scaled_cache, mode):
         super().__init__()
@@ -1700,8 +1708,7 @@ def main():
         sync.register_windows(winA, None)
 
         geoA = screens[0].geometry()
-        winA.setGeometry(geoA)
-        winA.showFullScreen()
+        show_signage_window(winA, geoA)
 
         winA.show_media()
         try:
@@ -1723,11 +1730,8 @@ def main():
         geoA = screens[0].geometry()
         geoB = screens[1].geometry()
 
-        winA.setGeometry(geoA)
-        winA.showFullScreen()
-
-        winB.setGeometry(geoB)
-        winB.showFullScreen()
+        show_signage_window(winA, geoA)
+        show_signage_window(winB, geoB)
 
         winA.show_media()
         winB.show_media()
