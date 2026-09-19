@@ -511,16 +511,15 @@ class MediaWindow(QWidget):
         cmd = prepare_app_command(item["command"])
         duration = item.get("duration", None)
 
-        self._hide_for_external_app()
         try:
             self.app_process = subprocess.Popen(cmd, shell=False)
         except Exception:
-            self._restore_after_external_app()
             raise
 
         self.real_pid = self.app_process.pid
 
-        QTimer.singleShot(500, self._activate_external_app)
+        self.logger.write(self.role, f"show_app() process started pid = {self.real_pid}")
+        QTimer.singleShot(1000, self._prepare_external_app)
 
         self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid}")
 
@@ -530,6 +529,15 @@ class MediaWindow(QWidget):
         else:
             # プロセス終了を監視
             QTimer.singleShot(500, self._check_app_running)
+
+    def _prepare_external_app(self):
+        process = getattr(self, "app_process", None)
+        if process is None or process.poll() is not None:
+            self.logger.write(self.role, "show_app() process ended before activation")
+            return
+
+        self._hide_for_external_app()
+        self._activate_external_app()
 
     def _check_app_running(self):
         self.logger.write(self.role, f"check_app_running() start")
