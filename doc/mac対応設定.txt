@@ -1,3 +1,9 @@
+Macアカウント
+
+ユーザ：signage
+Pass:ksplab2021
+
+
 01 省エネ設定を完全無効化する
 深いスリープを防ぎ、Wake-on-LAN と caffeinate の動作を安定させるための必須設定。
 

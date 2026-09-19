@@ -1350,7 +1350,7 @@ class PairSync:
                 return
             self.current_pair = shared_pair
 
-        self._external_app_windows_hidden = []
+        self._external_app_windows_hidden = set()
 
     def error(self, role, message):
         self.error_flag = True
@@ -1364,9 +1364,8 @@ class PairSync:
         if platform.system() != "Darwin":
             return
 
-        self._external_app_windows_hidden = []
         if window is not None and window.isVisible():
-            self._external_app_windows_hidden.append(window)
+            self._external_app_windows_hidden.add(window)
             window.hide()
 
         window.app.processEvents()
@@ -1378,11 +1377,12 @@ class PairSync:
         if window not in self._external_app_windows_hidden:
             return
 
-        self._external_app_windows_hidden.remove(window)
+        self._external_app_windows_hidden.discard(window)
         window.showFullScreen()
 
-        window.raise_()
-        window.activateWindow()
+        if not self._external_app_windows_hidden:
+            window.raise_()
+            window.activateWindow()
 
     def finished(self, role):
 
