@@ -185,16 +185,22 @@ class MediaWindow(QWidget):
         if process is None or process.poll() is not None:
             return
 
-        script = (
-            "tell application \"System Events\" to "
-            f"set frontmost of first process whose unix id is {process.pid} to true"
-        )
-        subprocess.run(
-            ["osascript", "-e", script],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
+        try:
+            parent = psutil.Process(process.pid)
+        except psutil.NoSuchProcess:
+            return
+
+        for candidate in [process.pid, *[child.pid for child in parent.children(recursive=True)]]:
+            script = (
+                "tell application \"System Events\" to "
+                f"set frontmost of first process whose unix id is {candidate} to true"
+            )
+            subprocess.run(
+                ["osascript", "-e", script],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     def _restore_after_external_app(self):
         if platform.system() != "Darwin":
@@ -1389,10 +1395,10 @@ class PairSync:
             return
 
         self._external_app_windows_hidden.discard(window)
-        window.showFullScreen()
+        window.show()
+        window.raise_()
 
         if not self._external_app_windows_hidden:
-            window.raise_()
             window.activateWindow()
 
     def finished(self, role):
