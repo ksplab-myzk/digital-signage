@@ -61,6 +61,8 @@ def show_signage_window(window, geometry):
     window.setGeometry(geometry)
     if platform.system() == "Darwin":
         window.show()
+        window.setGeometry(geometry)
+        QTimer.singleShot(0, lambda: window.setGeometry(geometry))
     else:
         window.showFullScreen()
 
