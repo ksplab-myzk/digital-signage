@@ -26,9 +26,10 @@ chrome_profile/
 chrome_user_data/
 chrome_temp/
 
-# Vimeo player cache
+# Vimeo player cache & old
 cache/
 tmp/
+old/
 
 # Config
 config.ini

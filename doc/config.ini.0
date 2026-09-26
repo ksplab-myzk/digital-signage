@@ -1,0 +1,89 @@
+;===========================================
+;  Display Settings
+;===========================================
+[display]
+
+; 動作モード
+;   single : 1画面モード
+;   dual   : 2画面モード
+mode = dual
+
+; ② ディスプレイが1枚しか無い場合に single に自動切替する
+fallback_to_single = true
+
+
+;===========================================
+;  Playlist Settings
+;===========================================
+[playlist]
+
+folder = playlists
+pairs_a = pairsA.json
+pairs_b = pairsB.json
+
+; プレイリストのパス
+path_a = playlistA.json
+path_b = playlistB.json
+
+; ③ playlistB が無い場合に single に自動切替する
+allow_single_when_b_missing = true
+
+
+;===========================================
+;  Logging Settings（将来拡張用）
+;===========================================
+[logging]
+
+; ログレベル: debug / info / error
+level = debug
+
+; ログファイルの出力先
+file = signage.log
+
+
+;===========================================
+;  Chrome / Player Settings（将来拡張用）
+;===========================================
+[player]
+
+; 動画終了イベントのタイムアウト（ミリ秒）
+duration_timeout = 30000
+
+; Chrome のパス（必要なら上書き）
+chrome_path = C:\Program Files\Google\Chrome\Application\chrome.exe
+
+;===========================================
+;  起動時刻制御
+;===========================================
+[system]
+
+enable_time_control = true
+start_time = 08:00
+end_time = 20:00
+
+;===========================================
+; 共有動作モード：shared_main / shared_sub / single
+;===========================================
+[shared]
+
+shared_path = \\192.168.1.113\shared\shared_pair.json
+; shared_path = shared/shared_pair.json
+
+shared_mode = single
+
+# 共有フォルダの種別:smb_windows / smb_mac
+shared_type = smb_windows   
+
+# 共有フォルダの場所
+shared_host = 192.168.1.113
+shared_share = shared
+
+# 認証情報
+shared_user = shared_user
+shared_pass = password123
+
+# Mac のマウントポイント
+shared_mount = /Volumes/Shared
+
+# Windows のドライブレター
+shared_drive = Z
