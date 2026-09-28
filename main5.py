@@ -42,6 +42,13 @@ from common import load_playlist, load_playlist_pair
 # Const値
 OVERLAY_HEIGHT = 400
 
+def ms_logger(logger, msg):
+    now = datetime.now()
+    timestamp_ms = now.strftime('%Y-%m-%d %H:%M:%S') + f'.{now.microsecond // 1000:03d}'
+
+    pid = os.getpid()
+    
+    logger.write(f"[INFO+] ["+timestamp_ms+"], PID:["+str(pid)+"]" +msg)
 
 def prepare_app_command(command):
     if isinstance(command, list):
@@ -211,6 +218,7 @@ class MediaWindow(QWidget):
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
             )
+        ms_logger(self.logger, "_activate_external_app() end")
 
     def _restore_after_external_app(self):
         if platform.system() != "Darwin":
@@ -523,6 +531,8 @@ class MediaWindow(QWidget):
 
         try:
             self.app_process = subprocess.Popen(cmd, shell=False)
+            ms_logger(self.logger, "Popen complete1")
+
         except Exception:
             raise
 
@@ -548,6 +558,7 @@ class MediaWindow(QWidget):
 
         self._hide_for_external_app()
         self._activate_external_app()
+        ms_logger(self.logger, "prepare_external_app() complete1")
 
     def _check_app_running(self):
         self.logger.write(self.role, f"check_app_running() start")
@@ -861,16 +872,23 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"_after_transition() : role={self.role} 終了")
 
     def _after_transition_video_start(self):
+        self.logger.write(self.role, f"[video] transition callback entered index={self.index}")
         item = self.playlist[self.index]
+
+        self.logger.write(self.role, f"_after_transition_video_start() : role={self.role} 開始")
 
         # 動画プレイヤー初期化
         self.player = self.vlc_instance.media_player_new()
         media = self.vlc_instance.media_new(item["path"])
         self.player.set_media(media)
+        self._video_poll_started = False
+        self._video_last_state = None
+        self._video_last_state_log_at = time.monotonic()
+        self.logger.write(self.role, f"[video] media assigned index={self.index} path={item['path']}")
 
         # ★ VLC のスケーリング設定（mac の暫定対処）
         self.player.video_set_scale(0)              # 自動スケーリング
-        self.player.video_set_aspect_ratio("16:9")  # 画面比率固定
+        self.player.video_set_aspect_ratio(None)     # 元動画のアスペクト比を使用
         
         win_id = int(self.winId())
 
@@ -891,7 +909,27 @@ class MediaWindow(QWidget):
         if self.player is None:
             return
 
-        state = self.player.get_state()
+        if not hasattr(self, "_video_poll_started"):
+            self._video_poll_started = True
+            self.logger.write(self.role, f"[video] state poll entered index={self.index}")
+
+        try:
+            state = self.player.get_state()
+        except Exception as exc:
+            self.logger.write(self.role, f"[video] get_state failed index={self.index}: {exc}")
+            QTimer.singleShot(1000, self._check_video_end)
+            return
+
+        now = time.monotonic()
+        if (state != getattr(self, "_video_last_state", None)
+                or now - getattr(self, "_video_last_state_log_at", 0) >= 30):
+            self.logger.write(
+                self.role,
+                f"[video] state={state} index={self.index} "
+                f"time_ms={self.player.get_time()} position={self.player.get_position():.3f}"
+            )
+            self._video_last_state = state
+            self._video_last_state_log_at = now
 
         if state in (vlc.State.Ended, vlc.State.Stopped):
             # self._transition_from_video()   # ★ここが重要
