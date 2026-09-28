@@ -43,12 +43,11 @@ from common import load_playlist, load_playlist_pair
 OVERLAY_HEIGHT = 400
 
 def ms_logger(logger, msg):
-    now = datetime.now()
+    now = datetime.datetime.now()
     timestamp_ms = now.strftime('%Y-%m-%d %H:%M:%S') + f'.{now.microsecond // 1000:03d}'
 
     pid = os.getpid()
-    
-    logger.write(f"[INFO+] ["+timestamp_ms+"], PID:["+str(pid)+"]" +msg)
+    logger.write("", f"[INFO+] [{timestamp_ms}], PID:[{pid}] {msg}")
 
 def prepare_app_command(command):
     if isinstance(command, list):
