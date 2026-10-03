@@ -567,7 +567,8 @@ class MediaWindow(QWidget):
             return
 
         self._hide_for_external_app()
-        self._activate_external_app()
+        # APP自身が画面初期化後に前面化するため、サイネージ側からの前面化は行わない
+        # self._activate_external_app()
         self.logger.write(self.role, f"_prepare_external_app() End {get_msec()}")
 
     def _check_app_running(self):
