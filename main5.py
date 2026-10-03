@@ -42,6 +42,12 @@ from common import load_playlist, load_playlist_pair
 # Const値
 OVERLAY_HEIGHT = 400
 
+def get_msec():
+    now = datetime.datetime.now()
+    timestamp_ms = now.strftime('%Y-%m-%d %H:%M:%S') + f'.{now.microsecond // 1000:03d}'
+
+    return f'[{timestamp_ms}]'
+
 def ms_logger(logger, msg):
     now = datetime.datetime.now()
     timestamp_ms = now.strftime('%Y-%m-%d %H:%M:%S') + f'.{now.microsecond // 1000:03d}'
@@ -195,6 +201,9 @@ class MediaWindow(QWidget):
         self.sync.hide_for_external_app(self)
 
     def _activate_external_app(self):
+
+        self.logger.write(self.role, f"_activate_external_app() : 開始 ")
+
         if platform.system() != "Darwin":
             return
         process = getattr(self, "app_process", None)
@@ -540,7 +549,7 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"show_app() process started pid = {self.real_pid}")
         QTimer.singleShot(1000, self._prepare_external_app)
 
-        self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid}")
+        self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid} {get_msec()}")
 
         if duration:
             # duration 後に終了して次へ
@@ -550,6 +559,8 @@ class MediaWindow(QWidget):
             QTimer.singleShot(500, self._check_app_running)
 
     def _prepare_external_app(self):
+        self.logger.write(self.role, f"_prepare_external_app() start {get_msec()}")
+
         process = getattr(self, "app_process", None)
         if process is None or process.poll() is not None:
             self.logger.write(self.role, "show_app() process ended before activation")
@@ -557,10 +568,10 @@ class MediaWindow(QWidget):
 
         self._hide_for_external_app()
         self._activate_external_app()
-        ms_logger(self.logger, "prepare_external_app() complete1")
+        self.logger.write(self.role, f"_prepare_external_app() End {get_msec()}")
 
     def _check_app_running(self):
-        self.logger.write(self.role, f"check_app_running() start")
+        self.logger.write(self.role, f"check_app_running() start {get_msec()}")
         process = getattr(self, "app_process", None)
         if process is None:
             return
@@ -573,7 +584,7 @@ class MediaWindow(QWidget):
             self._finish_app_and_next()
 
     def _close_app_and_next(self):
-        self.logger.write(self.role, f"close_app_and_next() start")
+        self.logger.write(self.role, f"close_app_and_next() start {get_msec()}")
         self._terminate_app_process()
         QTimer.singleShot(500, self._kill_if_alive)
 
