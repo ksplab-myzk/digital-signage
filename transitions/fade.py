@@ -15,6 +15,7 @@ class FadeTransition(TransitionBase):
 
         parent = self.parent
         label = parent.label
+        generation = getattr(parent, "_pair_generation", 0)
 
         parent._transition_running = True
         parent._transition_new_pix = new_pix
@@ -53,18 +54,26 @@ class FadeTransition(TransitionBase):
 
         group.addAnimation(anim1)
         group.addAnimation(anim2)
+        parent._transition_group = group
 
         # フェードアウト後に画像を差し替える
         def on_fade_out_finished():
+            if generation != getattr(parent, "_pair_generation", 0):
+                return
             label.setPixmap(new_pix)
 
         anim1.finished.connect(on_fade_out_finished)
 
         # 最後に1回だけ callback を呼ぶ
         def on_finished():
+            if generation != getattr(parent, "_pair_generation", 0):
+                return
+
             self.parent.logger.write(self.parent.role, f"FadeTransition finishied")
 
             label.setGraphicsEffect(None)
+            if getattr(parent, "_transition_group", None) is group:
+                parent._transition_group = None
             finished()
 
         group.finished.connect(on_finished)

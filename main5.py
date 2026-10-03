@@ -14,6 +14,7 @@ import argparse
 import psutil   # pip install psutil
 import gc
 import time
+import tempfile
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
@@ -90,6 +91,7 @@ class MediaWindow(QWidget):
         self.app = app
         self.role = role      # "a" or "b"
         self.sync = sync      # ★ 追加
+        self._pair_generation = 0
         self.pixmap_cache = pixmap_cache
         self.scaled_cache = scaled_cache
 
@@ -170,6 +172,49 @@ class MediaWindow(QWidget):
             self.player.stop()
             self.player.release()
             self.player = None
+
+    def _schedule_content_callback(self, delay_ms, callback):
+        if self.sync.shared_mode != "shared_sub":
+            QTimer.singleShot(max(0, int(delay_ms)), callback)
+            return
+
+        generation = self._pair_generation
+
+        def run_if_current_pair():
+            if generation == self._pair_generation:
+                callback()
+
+        QTimer.singleShot(max(0, int(delay_ms)), run_if_current_pair)
+
+    def stop_for_pair_change(self):
+        self._pair_generation += 1
+        self._nexting = False
+        self._transition_running = False
+        self._transition_done = True
+
+        transition_group = getattr(self, "_transition_group", None)
+        if transition_group is not None:
+            transition_group.stop()
+            transition_group.deleteLater()
+            self._transition_group = None
+        self.label.setGraphicsEffect(None)
+
+        overlay_timer = getattr(self, "overlay_timer", None)
+        if overlay_timer is not None:
+            overlay_timer.stop()
+        self.overlay_label.hide()
+
+        if self.player is not None:
+            self.detach_video_output()
+            self.stop_video()
+
+        self._terminate_app_process(force=True)
+        self._restore_after_external_app()
+        self.reset_webview()
+        self.label.clear()
+        self.label.show()
+        self.text_label.hide()
+        self.logo_label.hide()
 
     def _terminate_app_process(self, force=False):
         process = getattr(self, "app_process", None)
@@ -336,7 +381,7 @@ class MediaWindow(QWidget):
                     self._set_label_pixmap(scaled, "show_media:199")
 
                     self.prev_pixmap = scaled
-                    QTimer.singleShot(item.get("duration", 5000), self._next_item)
+                    self._schedule_content_callback(item.get("duration", 5000), self._next_item)
 
                 # 2回目以降
                 else :
@@ -362,7 +407,7 @@ class MediaWindow(QWidget):
                     self.logger.write(self.role, 
                         f"show_media():[ERROR] Folder not found:[{self.role}] index={self.index} path={item['folder']} "
                     )
-                    QTimer.singleShot(10, self._next_item)
+                    self._schedule_content_callback(10, self._next_item)
                     return
 
                 files = sorted(os.listdir(folder))
@@ -377,7 +422,7 @@ class MediaWindow(QWidget):
                     self.logger.write(self.role, 
                         f"show_media():[ERROR] No PNG files in:[{self.role}] index={self.index} path={item['folder']} "
                     )
-                    QTimer.singleShot(10, self._next_item)
+                    self._schedule_content_callback(10, self._next_item)
                     return
 
                 self.pdf_index = 0
@@ -515,7 +560,9 @@ class MediaWindow(QWidget):
             self._set_label_pixmap(scaled, "show_pdf_page")
 
             self.prev_pixmap = scaled
-            QTimer.singleShot(item.get("duration", 5000), lambda: self._next_pdf_page(item))
+            self._schedule_content_callback(
+                item.get("duration", 5000), lambda: self._next_pdf_page(item)
+            )
             return
 
         # トランジション実行（前ページ→次ページ）
@@ -547,16 +594,16 @@ class MediaWindow(QWidget):
         self.real_pid = self.app_process.pid
 
         self.logger.write(self.role, f"show_app() process started pid = {self.real_pid}")
-        QTimer.singleShot(1000, self._prepare_external_app)
+        self._schedule_content_callback(1000, self._prepare_external_app)
 
         self.logger.write(self.role, f"check_app_running() real_pid = {self.real_pid} {get_msec()}")
 
         if duration:
             # duration 後に終了して次へ
-            QTimer.singleShot(duration, self._close_app_and_next)
+            self._schedule_content_callback(duration, self._close_app_and_next)
         else:
             # プロセス終了を監視
-            QTimer.singleShot(500, self._check_app_running)
+            self._schedule_content_callback(500, self._check_app_running)
 
     def _prepare_external_app(self):
         self.logger.write(self.role, f"_prepare_external_app() start {get_msec()}")
@@ -579,7 +626,7 @@ class MediaWindow(QWidget):
 
         if process.poll() is None:
             self.logger.write(self.role, f"check_app_running() app running!")
-            QTimer.singleShot(500, self._check_app_running)
+            self._schedule_content_callback(500, self._check_app_running)
         else:
             self.logger.write(self.role, f"check_app_running() app ended!")
             self._finish_app_and_next()
@@ -587,7 +634,7 @@ class MediaWindow(QWidget):
     def _close_app_and_next(self):
         self.logger.write(self.role, f"close_app_and_next() start {get_msec()}")
         self._terminate_app_process()
-        QTimer.singleShot(500, self._kill_if_alive)
+        self._schedule_content_callback(500, self._kill_if_alive)
 
     def _kill_if_alive(self):
         self.logger.write(self.role, f"kill_if_alive() start pid={self.real_pid}")
@@ -605,7 +652,7 @@ class MediaWindow(QWidget):
         self._terminate_app_process(force=True)
         self._restore_after_external_app()
         self.app.processEvents()
-        QTimer.singleShot(100, self._next_item)
+        self._schedule_content_callback(100, self._next_item)
 
     def show_web(self, item):
 
@@ -642,7 +689,7 @@ class MediaWindow(QWidget):
         self.webview.setGeometry(self.rect())
         self.webview.load(QUrl(url))
 
-        QTimer.singleShot(50, lambda: self._show_web_delayed(item))
+        self._schedule_content_callback(50, lambda: self._show_web_delayed(item))
 
         self.logger.write(self.role,
             f"[Web AFTER] index={self.index} "
@@ -663,7 +710,7 @@ class MediaWindow(QWidget):
         # ★ ページ読み込み完了後にスクロール開始
         self.webview.loadFinished.connect(self._start_web_scroll)
 
-        QTimer.singleShot(duration, self._close_web_and_next)
+        self._schedule_content_callback(duration, self._close_web_and_next)
 
     def _show_web_delayed(self, item):
         self.label.lower()
@@ -878,7 +925,7 @@ class MediaWindow(QWidget):
 
         duration = item.get("duration", 5000)
         # duration = 10
-        QTimer.singleShot(duration, self._next_item)
+        self._schedule_content_callback(duration, self._next_item)
 
         self.logger.write(self.role, f"_after_transition() : role={self.role} 終了")
 
@@ -908,13 +955,19 @@ class MediaWindow(QWidget):
 
         # OSごとに埋め込み方法を変える
         if platform.system() == "Windows":
-            QTimer.singleShot(50, lambda: self.player.set_hwnd(win_id) or self.player.play())
+            self._schedule_content_callback(
+                50, lambda: self.player.set_hwnd(win_id) or self.player.play()
+            )
         elif platform.system() == "Linux":
-            QTimer.singleShot(150, lambda: self.player.set_xwindow(win_id) or self.player.play())
+            self._schedule_content_callback(
+                150, lambda: self.player.set_xwindow(win_id) or self.player.play()
+            )
         else:  # macOS
-            QTimer.singleShot(500, lambda: self.player.set_nsobject(win_id) or self.player.play())
+            self._schedule_content_callback(
+                500, lambda: self.player.set_nsobject(win_id) or self.player.play()
+            )
             # 埋め込み後に強制リサイズ（再描画イベント発生）
-            QTimer.singleShot(600, lambda: self.resize(self.width(), self.height()))
+            self._schedule_content_callback(600, lambda: self.resize(self.width(), self.height()))
 
         # ★元のロジック：動画終了監視（ポーリング）
         self._check_video_end()
@@ -931,7 +984,7 @@ class MediaWindow(QWidget):
             state = self.player.get_state()
         except Exception as exc:
             self.logger.write(self.role, f"[video] get_state failed index={self.index}: {exc}")
-            QTimer.singleShot(1000, self._check_video_end)
+            self._schedule_content_callback(1000, self._check_video_end)
             return
 
         now = time.monotonic()
@@ -1019,7 +1072,7 @@ class MediaWindow(QWidget):
 
             return
 
-        QTimer.singleShot(200, self._check_video_end)
+        self._schedule_content_callback(200, self._check_video_end)
 
 
     def detach_video_output(self):
@@ -1074,7 +1127,9 @@ class MediaWindow(QWidget):
         self.prev_pixmap = scaled
         self.pdf_index += 1
 
-        QTimer.singleShot(item.get("duration", 5000), lambda: self.show_pdf_page(item))
+        self._schedule_content_callback(
+            item.get("duration", 5000), lambda: self.show_pdf_page(item)
+        )
 
     def apply_logo(self, logo_info):
 
@@ -1459,6 +1514,7 @@ class PairSync:
             self.current_pair = shared_pair
 
         self._external_app_windows_hidden = set()
+        self._last_rejected_shared_pair = None
 
     def error(self, role, message):
         self.error_flag = True
@@ -1467,6 +1523,68 @@ class PairSync:
     def register_windows(self, winA, winB):
         self.winA = winA
         self.winB = winB
+        if self.shared_mode == "shared_sub" and winA is not None:
+            self._shared_poll_timer = QTimer(winA)
+            self._shared_poll_timer.setInterval(250)
+            self._shared_poll_timer.timeout.connect(self.poll_shared_pair_update)
+            self._shared_poll_timer.start()
+
+    def poll_shared_pair_update(self):
+        if self.shared_mode != "shared_sub":
+            return False
+
+        shared_pair = self.check_shared_json()
+        if shared_pair is None or shared_pair == self.current_pair:
+            return False
+
+        if not 0 <= shared_pair < min(len(self.pairsA), len(self.pairsB)):
+            if shared_pair != self._last_rejected_shared_pair:
+                self.logger.write("ERROR", f"shared pair index out of range: {shared_pair}")
+            self._last_rejected_shared_pair = shared_pair
+            return False
+
+        self.logger.write(
+            "",
+            f"shared_sub pair update detected: {self.current_pair} -> {shared_pair}",
+        )
+        return self._start_pair(shared_pair)
+
+    def _start_pair(self, pair_index):
+        file_a = self.pairsA[pair_index]
+        file_b = self.pairsB[pair_index]
+        path_a = os.path.join(self.playlist_folder, file_a)
+        path_b = os.path.join(self.playlist_folder, file_b)
+
+        if not os.path.exists(path_a) or (self.mode != "single" and not os.path.exists(path_b)):
+            if pair_index != self._last_rejected_shared_pair:
+                self.logger.write(
+                    "ERROR",
+                    f"shared pair playlists not found: A={path_a} B={path_b}",
+                )
+            self._last_rejected_shared_pair = pair_index
+            return False
+
+        windows = [self.winA]
+        if self.mode != "single" and self.winB is not None:
+            windows.append(self.winB)
+
+        for window in windows:
+            window.stop_for_pair_change()
+
+        self.current_pair = pair_index
+        self._last_rejected_shared_pair = None
+        self.a_cycles = 0
+        self.b_cycles = 0
+
+        for window in windows:
+            window.reset_state()
+
+        self.winA.on_sync_command(f"START_PAIR_{pair_index}", self.playlist_folder, file_a)
+        if self.mode != "single" and self.winB is not None:
+            self.winB.on_sync_command(f"START_PAIR_{pair_index}", self.playlist_folder, file_b)
+
+        self.logger.write("", f"pair {pair_index} started")
+        return True
 
     def hide_for_external_app(self, window):
         if platform.system() != "Darwin":
@@ -1559,6 +1677,12 @@ class PairSync:
             next_pair = shared_pair
             self.logger.write("", f"next_pair() shared_sub → next_pair={next_pair}")
 
+            if next_pair == self.current_pair:
+                self.a_cycles = 0
+                self.b_cycles = 0
+                self.logger.write("", "shared_sub pair unchanged; keep current pair")
+                return
+
         # プレイリストフォルダ
         playlist_folder = self.playlist_folder
 
@@ -1581,6 +1705,11 @@ class PairSync:
             self.a_cycles = 0
             self.b_cycles = 0
             # return
+
+        if self.shared_mode == "shared_sub":
+            self._start_pair(next_pair)
+            self.logger.write("", "next_pair() 終了")
+            return
 
         # ペア番号を更新
         self.current_pair = next_pair
@@ -1625,29 +1754,70 @@ class PairSync:
             "pair": self.current_pair,
             "timestamp": datetime.datetime.now().isoformat()
         }
+        temp_path = None
         try:
-            with open(self.shared_path, "w") as f:
-                json.dump(data, f)
+            shared_path = Path(self.shared_path)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=shared_path.parent,
+                prefix=f".{shared_path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as temp_file:
+                temp_path = Path(temp_file.name)
+                json.dump(data, temp_file)
+                temp_file.flush()
+                os.fsync(temp_file.fileno())
+
+            os.replace(temp_path, shared_path)
             print(f"[Main] write pair={self.current_pair}")
         except Exception as e:
             print(f"[Main] write error: {e}")
+            self.logger.write("ERROR", f"write_shared_json() failed: {type(e).__name__}: {e}")
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
 
         self.logger.write("",f"write_shared_json() : mode={self.shared_mode} 終了")
 
     def check_shared_json(self):
-        try:
-            with open(self.shared_path, "r") as f:
-                data = json.load(f)
-        except Exception as e:
-            print(f"[Sub] read error: {e}")
-            return
+        retryable_errors = (json.JSONDecodeError, UnicodeDecodeError, OSError)
+        max_attempts = 5
 
-        pair = data.get("pair", -1)
+        for attempt in range(1, max_attempts + 1):
+            try:
+                with open(self.shared_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
 
-        if pair != self.last_pair:
-            self.last_pair = pair
+                if not isinstance(data, dict):
+                    raise ValueError("shared JSON root must be an object")
 
-        return(pair)
+                pair = data.get("pair")
+                if isinstance(pair, bool) or not isinstance(pair, int) or pair < 0:
+                    raise ValueError(f"invalid shared pair value: {pair!r}")
+
+                if pair != self.last_pair:
+                    self.last_pair = pair
+
+                if attempt > 1:
+                    self.logger.write("", f"shared JSON read recovered on attempt {attempt}/{max_attempts}")
+                return pair
+            except retryable_errors as e:
+                self.logger.write(
+                    "ERROR",
+                    f"shared JSON read attempt {attempt}/{max_attempts} failed: {type(e).__name__}: {e}",
+                )
+                if attempt < max_attempts:
+                    time.sleep(0.1)
+            except (ValueError, TypeError) as e:
+                self.logger.write("ERROR", f"shared JSON invalid: {type(e).__name__}: {e}")
+                return None
+
+        return None
 
 def load_pairs(path: str, playlist_folder: str):
     base_dir = Path(__file__).resolve().parent
