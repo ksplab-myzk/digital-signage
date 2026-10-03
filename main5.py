@@ -883,6 +883,9 @@ class MediaWindow(QWidget):
         self._video_poll_started = False
         self._video_last_state = None
         self._video_last_state_log_at = time.monotonic()
+        self._video_last_progress_at = None
+        self._video_last_time_ms = None
+        self._video_last_position = None
         self.logger.write(self.role, f"[video] media assigned index={self.index} path={item['path']}")
 
         # ★ VLC のスケーリング設定（mac の暫定対処）
@@ -920,22 +923,43 @@ class MediaWindow(QWidget):
             return
 
         now = time.monotonic()
+        time_ms = self.player.get_time()
+        position = self.player.get_position()
+        length_ms = self.player.get_length()
         if (state != getattr(self, "_video_last_state", None)
                 or now - getattr(self, "_video_last_state_log_at", 0) >= 30):
             self.logger.write(
                 self.role,
                 f"[video] state={state} index={self.index} "
-                f"time_ms={self.player.get_time()} position={self.player.get_position():.3f}"
+                f"time_ms={time_ms} position={position:.3f}"
             )
             self._video_last_state = state
             self._video_last_state_log_at = now
 
-        if state in (vlc.State.Ended, vlc.State.Stopped):
+        stalled = False
+        if state == vlc.State.Playing and time_ms >= 0 and position >= 0:
+            last_time_ms = self._video_last_time_ms
+            last_position = self._video_last_position
+            if (last_time_ms is None or last_position is None
+                    or time_ms > last_time_ms or position > last_position + 0.001):
+                self._video_last_progress_at = now
+                self._video_last_time_ms = time_ms
+                self._video_last_position = position
+            elif (self._video_last_progress_at is not None
+                    and now - self._video_last_progress_at >= 15):
+                stalled = True
+
+        reached_end = (
+            (length_ms > 0 and time_ms >= 0 and time_ms >= length_ms - 750)
+            or (length_ms <= 0 and position >= 0.995)
+        )
+        if state in (vlc.State.Ended, vlc.State.Stopped) or reached_end or stalled:
             # self._transition_from_video()   # ★ここが重要
             # self._next_item()
 
             self.logger.write(self.role,
-                f"[_check_video_end()] [{self.role}] index={self.index}  state ={state}")
+                f"[_check_video_end()] [{self.role}] index={self.index} state={state} "
+                f"reached_end={reached_end} stalled={stalled}")
 
             self._transition_running = False   # ★ 応急処置
 
