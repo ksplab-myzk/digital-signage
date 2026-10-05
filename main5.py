@@ -18,7 +18,7 @@ import tempfile
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
-from PySide6.QtCore import Qt, QTimer, QProcess, QPropertyAnimation
+from PySide6.QtCore import Qt, QTimer, QProcess, QPropertyAnimation, QThread, Signal
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import QUrl
@@ -42,6 +42,30 @@ from common import load_playlist, load_playlist_pair
 
 # Const値
 OVERLAY_HEIGHT = 400
+
+
+class VideoStopWorker(QThread):
+    completed = Signal(object, int, int, str)
+
+    def __init__(self, player, media_generation, pair_generation, parent=None):
+        super().__init__(parent)
+        self.player = player
+        self.media_generation = media_generation
+        self.pair_generation = pair_generation
+
+    def run(self):
+        errors = []
+        try:
+            self.player.stop()
+        except Exception as exc:
+            errors.append(f"stop failed: {exc}")
+        try:
+            self.player.release()
+        except Exception as exc:
+            errors.append(f"release failed: {exc}")
+        self.completed.emit(
+            self, self.media_generation, self.pair_generation, "; ".join(errors)
+        )
 
 def get_msec():
     now = datetime.datetime.now()
@@ -113,6 +137,8 @@ class MediaWindow(QWidget):
         # VLCプレイヤー
         self.vlc_instance = vlc.Instance()
         self.player = None
+        self._video_workers = []
+        self._media_generation = 0
 
         self.overlay = QLabel(self)
         self.overlay.setStyleSheet("background-color: black;")
@@ -291,6 +317,7 @@ class MediaWindow(QWidget):
             self.logger.write(self.role, f"show_media() : {self.role}: _showing return")
             return
 
+        self._media_generation += 1
         self._showing = True
 
         # ★ 前の画像を完全に消す（これが重要）
@@ -933,6 +960,9 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"[video] transition callback entered index={self.index}")
         item = self.playlist[self.index]
 
+        self._media_generation += 1
+        media_generation = self._media_generation
+
         self.logger.write(self.role, f"_after_transition_video_start() : role={self.role} 開始")
 
         # 動画プレイヤー初期化
@@ -1027,52 +1057,49 @@ class MediaWindow(QWidget):
                 f"reached_end={reached_end} stalled={stalled}")
 
             self._transition_running = False   # ★ 応急処置
-
-            # VLC の描画先を切り離す（最重要）
-            #try:
-            #    self.player.set_hwnd(0)
-            #except:
-            #    pass
-
-            # ★ OSごとに描画先を切り離す（最重要）
-            self.detach_video_output()
-
-            if self.player:
-                self.player.stop()
-                self.player = None
-
-            # label の残留フレームを消す
-            self.label.clear()
-            self.label.repaint()
-            self.label.hide()
-            self.label.lower()
-
-            # ★ここで index を進める（必須）
-            self.index += 1
-            if self.index >= len(self.playlist):
-                # self.index = 0
-                # ★ 応急処置：ここで finished() を呼ぶ
-                self.sync.finished(self.role)
-                return
-
-            # 次のコンテンツを確認
-            next_item = self.playlist[self.index]
-
-            if next_item["type"] == "video":
-                self._after_transition_video_start()
-
-            elif next_item["type"] in ("image", "pdf"):
-                self._transition_from_video()
-
-            elif next_item["type"] == "web":
-                # ★ WEB の場合はフェードを使わず直接表示
-                # self.player.stop()
-                # self.player = None
-                self.show_web(next_item)
-
+            player = self.player
+            self.player = None
+            worker = VideoStopWorker(
+                player, self._media_generation, self._pair_generation, self
+            )
+            self._video_workers.append(worker)
+            worker.completed.connect(self._on_video_stop_completed)
+            self.logger.write(self.role, f"[video] async stop started index={self.index}")
+            worker.start()
             return
 
         self._schedule_content_callback(200, self._check_video_end)
+
+    def _on_video_stop_completed(
+        self, worker, media_generation, pair_generation, error
+    ):
+        if worker in self._video_workers:
+            self._video_workers.remove(worker)
+        worker.deleteLater()
+        if error:
+            self.logger.write(self.role, f"[video] async stop error: {error}")
+        if (media_generation != self._media_generation
+                or pair_generation != self._pair_generation):
+            return
+
+        self.logger.write(self.role, f"[video] async stop finished index={self.index}")
+        self.label.clear()
+        self.label.repaint()
+        self.label.hide()
+        self.label.lower()
+
+        self.index += 1
+        if self.index >= len(self.playlist):
+            self.sync.finished(self.role)
+            return
+
+        next_item = self.playlist[self.index]
+        if next_item["type"] == "video":
+            self._after_transition_video_start()
+        elif next_item["type"] in ("image", "pdf"):
+            self._transition_from_video()
+        elif next_item["type"] == "web":
+            self.show_web(next_item)
 
 
     def detach_video_output(self):
