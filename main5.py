@@ -15,10 +15,11 @@ import psutil   # pip install psutil
 import gc
 import time
 import tempfile
+import threading
 
 from PySide6.QtWidgets import QApplication, QLabel, QWidget, QVBoxLayout
 from PySide6.QtGui import QPixmap, QKeySequence, QShortcut, QTransform, QFont
-from PySide6.QtCore import Qt, QTimer, QProcess, QPropertyAnimation, QThread, Signal
+from PySide6.QtCore import Qt, QTimer, QProcess, QPropertyAnimation, QObject, Signal
 from PySide6.QtWidgets import QGraphicsOpacityEffect
 from PySide6.QtCore import QPropertyAnimation
 from PySide6.QtCore import QUrl
@@ -44,8 +45,9 @@ from common import load_playlist, load_playlist_pair
 OVERLAY_HEIGHT = 400
 
 
-class VideoStopWorker(QThread):
+class VideoStopWorker(QObject):
     completed = Signal(object, int, int, str)
+    stage = Signal(str)
 
     def __init__(self, player, media_generation, pair_generation, parent=None):
         super().__init__(parent)
@@ -56,11 +58,15 @@ class VideoStopWorker(QThread):
     def run(self):
         errors = []
         try:
+            self.stage.emit("calling stop")
             self.player.stop()
+            self.stage.emit("stop returned")
         except Exception as exc:
             errors.append(f"stop failed: {exc}")
         try:
+            self.stage.emit("calling release")
             self.player.release()
+            self.stage.emit("release returned")
         except Exception as exc:
             errors.append(f"release failed: {exc}")
         self.completed.emit(
@@ -1060,12 +1066,19 @@ class MediaWindow(QWidget):
             player = self.player
             self.player = None
             worker = VideoStopWorker(
-                player, self._media_generation, self._pair_generation, self
+                player, self._media_generation, self._pair_generation
             )
             self._video_workers.append(worker)
             worker.completed.connect(self._on_video_stop_completed)
+            worker.stage.connect(self._on_video_stop_stage)
             self.logger.write(self.role, f"[video] async stop started index={self.index}")
-            worker.start()
+            worker.thread = threading.Thread(
+                target=worker.run,
+                daemon=True,
+                name=f"video-stop-{self.role}-{self.index}",
+            )
+            worker.thread.start()
+            self._advance_after_video_end()
             return
 
         self._schedule_content_callback(200, self._check_video_end)
@@ -1078,11 +1091,16 @@ class MediaWindow(QWidget):
         worker.deleteLater()
         if error:
             self.logger.write(self.role, f"[video] async stop error: {error}")
-        if (media_generation != self._media_generation
-                or pair_generation != self._pair_generation):
-            return
+        self.logger.write(
+            self.role,
+            f"[video] async stop finished media_generation={media_generation} "
+            f"pair_generation={pair_generation}",
+        )
 
-        self.logger.write(self.role, f"[video] async stop finished index={self.index}")
+    def _on_video_stop_stage(self, stage):
+        self.logger.write(self.role, f"[video] async stop {stage}")
+
+    def _advance_after_video_end(self):
         self.label.clear()
         self.label.repaint()
         self.label.hide()
