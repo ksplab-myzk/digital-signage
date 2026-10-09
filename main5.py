@@ -58,6 +58,17 @@ class VideoStopWorker(QObject):
     def run(self):
         errors = []
         try:
+            self.stage.emit("calling detach")
+            if platform.system() == "Windows":
+                self.player.set_hwnd(0)
+            elif platform.system() == "Linux":
+                self.player.set_xwindow(0)
+            else:
+                self.player.set_nsobject(0)
+            self.stage.emit("detach returned")
+        except Exception as exc:
+            errors.append(f"detach failed: {exc}")
+        try:
             self.stage.emit("calling stop")
             self.player.stop()
             self.stage.emit("stop returned")
