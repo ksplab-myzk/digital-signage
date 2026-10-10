@@ -145,6 +145,11 @@ class MediaWindow(QWidget):
         self.label.setGeometry(self.rect())
         self.label.setAlignment(Qt.AlignCenter)
 
+        self.video_surface = QWidget(self)
+        self.video_surface.setGeometry(self.rect())
+        self.video_surface.setAttribute(Qt.WA_NativeWindow, True)
+        self.video_surface.hide()
+
         # 
         self.overlay = QLabel(self)
         self.overlay.setStyleSheet("background-color: black;")
@@ -211,6 +216,7 @@ class MediaWindow(QWidget):
         shortcut.activated.connect(app.quit)
 
     def stop_video(self):
+        self.video_surface.hide()
         if self.player:
             self.player.stop()
             self.player.release()
@@ -348,6 +354,7 @@ class MediaWindow(QWidget):
         # ★ WebView も一旦隠す（描画順序の乱れを防ぐ）
         if self.webview is not None:
             self.webview.hide()
+        self.video_surface.hide()
 
         # ★ すべてのタイマーを停止（これが重要）
         try:
@@ -895,6 +902,7 @@ class MediaWindow(QWidget):
     def resizeEvent(self, event):
         self.label.setGeometry(self.rect())
         self.overlay.setGeometry(self.rect())
+        self.video_surface.setGeometry(self.rect())
 
         # ★ WebView もフルスクリーンに追従
         if self.webview is not None:
@@ -998,7 +1006,10 @@ class MediaWindow(QWidget):
         self.player.video_set_scale(0)              # 自動スケーリング
         self.player.video_set_aspect_ratio(None)     # 元動画のアスペクト比を使用
         
-        win_id = int(self.winId())
+        self.video_surface.setGeometry(self.rect())
+        self.video_surface.show()
+        self.video_surface.raise_()
+        win_id = int(self.video_surface.winId())
 
         # OSごとに埋め込み方法を変える
         if platform.system() == "Windows":
@@ -1112,6 +1123,7 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"[video] async stop {stage}")
 
     def _advance_after_video_end(self):
+        self.video_surface.hide()
         self.label.clear()
         self.label.repaint()
         self.label.hide()
