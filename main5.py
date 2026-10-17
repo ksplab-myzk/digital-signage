@@ -42,8 +42,7 @@ from common import (
 from common import load_playlist, load_playlist_pair
 
 # Const値
-OVERLAY_HEIGHT = 400
-
+OVERLAY_HEIGHT = 480
 
 class VideoStopWorker(QObject):
     completed = Signal(object, int, int, str)
