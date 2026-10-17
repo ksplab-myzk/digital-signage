@@ -1,0 +1,16 @@
+1. 画面オフ後のロックを無効にする
+
+powercfg /setacvalueindex SCHEME_CURRENT SUB_VIDEO VIDEOCONLOCK 0
+powercfg /setactive SCHEME_CURRENT
+
+powercfg -attributes SUB_VIDEO 8EC4B3A5-6868-48c2-BE75-4F3044BE88A7 -ATTRIB_HIDE
+
+「電源オプション → プラン設定の変更 → 詳細な電源設定の変更 → ディスプレイ → コンソール ロック表示オフ タイムアウト」を 0 にします。
+
+
+2. スリープ復帰時のサインイン要求をなしにする
+
+powercfg /setacvalueindex SCHEME_CURRENT SUB_NONE CONSOLELOCK 0
+powercfg /setactive SCHEME_CURREN
+
+T

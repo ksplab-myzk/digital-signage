@@ -25,6 +25,8 @@ sudo pmset repeat wake MTWRFSU 08:00:00
 
 sudo pmset repeat sleep MTWRFSU 20:00:00
 
+→ sudo pmset repeat wakeorpoweron MTWRFSU 07:30:00 sleep MTWRFSU 20:10:00
+
 
 04 自動ログインを有効化
 サイネージを無人運用するために必須。
