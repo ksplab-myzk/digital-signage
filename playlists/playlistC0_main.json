@@ -1,11 +1,3 @@
 [
-	{"type":"video", "path":"videosA/MindPaletteNest_タイトル.mp4","duration": 10000},
-	{"overlay": {
-		"duration": 5000,
-		"items": [
-		"imagesC/card/weather.png",
-		"imagesC/card/weather_sum.png"
-		]
-	}
-	}
+	{"type": "image", "path": "imagesC/mind-palette-nest-miyazakidai.png", "duration": 10000}
 ]
