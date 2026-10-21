@@ -1,10 +1,3 @@
 [
-	{"type": "image", "path": "imagesC/ksp_crs_p1.png", "duration": 10000},
-	{"overlay": {
-		"duration": 5000,
-		"items": [
-		"imagesC/card/weather.png"
-		]
-		}
-	}
+	{"type": "image", "path": "imagesC/ksp_crs_p1.png", "duration": 10000}
 ]

@@ -1,5 +1,13 @@
 [
 	{"type": "image", "path": "imagesC/TH3.png", "duration": 10000},
 	{"type": "image", "path": "imagesC/roblox2.png", "duration": 10000},
-	{"type": "image", "path": "imagesC/roblox3.png", "duration": 10000}
+	{"type": "image", "path": "imagesC/roblox3.png", "duration": 10000},
+	{"overlay": 
+    	{
+	  		"duration": 30000,
+	  		"items": [
+	  			"imagesC/card/power_forecast.png"
+	  		]
+	 		}
+	}
 ]
