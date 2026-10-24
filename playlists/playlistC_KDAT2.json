@@ -1,8 +1,8 @@
 [
-	{"type": "image", "path": "imagesC/kda_center_02.png", "duration": 5000},
+	{"type": "image", "path": "imagesC/kda_center_02.png", "duration": 10000},
 	{"overlay": 
     	{
-	  		"duration": 5000,
+	  		"duration": 10000,
 	  		"items": [
 	  			"imagesC/card/calendar_sun.png"
 	  		]
