@@ -245,7 +245,14 @@ class MediaWindow(QWidget):
             transition_group.stop()
             transition_group.deleteLater()
             self._transition_group = None
+        crossfade_labels = getattr(self, "_crossfade_labels", None)
+        if crossfade_labels is not None:
+            for crossfade_label in crossfade_labels:
+                crossfade_label.hide()
+                crossfade_label.deleteLater()
+            self._crossfade_labels = None
         self.label.setGraphicsEffect(None)
+        self.label.setGeometry(self.rect())
 
         overlay_timer = getattr(self, "overlay_timer", None)
         if overlay_timer is not None:
@@ -512,62 +519,6 @@ class MediaWindow(QWidget):
 
         finally:
             self._showing = False
-
-    def fade_out(self, widget, duration=800):
-
-        self.logger.write(self.role,  f"fade_out() : fade_out(開始)")
-
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
-
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(duration)
-        anim.setStartValue(1.0)
-        anim.setEndValue(0.0)
-
-        # ★ アニメーションを保持
-        self.animations.append(anim)
-
-        def finish():
-            widget.hide()
-            widget.setGraphicsEffect(None)
-            self.animations.remove(anim)
-
-        anim.finished.connect(finish)
-
-        anim.start()
-
-        # ★ フェード終了後に hide() と effect の解除
-        def finish():
-            widget.hide()
-            widget.setGraphicsEffect(None)
-        # QTimer.singleShot(duration, lambda: (widget.hide(), widget.setGraphicsEffect(None)))
-
-    def fade_in(self, widget, duration=800):
-
-        self.logger.write(self.role, f"show_in() : fade_in(開始)")
-
-        widget.show()
-        effect = QGraphicsOpacityEffect(widget)
-        widget.setGraphicsEffect(effect)
-
-        anim = QPropertyAnimation(effect, b"opacity")
-        anim.setDuration(duration)
-        anim.setStartValue(0.0)
-        anim.setEndValue(1.0)
-
-        # ★ アニメーションを保持
-        self.animations.append(anim)
-
-        # 終了後に effect を外し、アニメーションを削除
-        def finish():
-            widget.setGraphicsEffect(None)
-            self.animations.remove(anim)
-
-        anim.finished.connect(finish)
-        anim.start()
-
-        #QTimer.singleShot(duration, lambda: widget.setGraphicsEffect(None))
 
     def show_pdf_page(self, item):
 
@@ -916,28 +867,12 @@ class MediaWindow(QWidget):
         super().resizeEvent(event)
 
     def choose_transition(self):
-        return FadeTransition(self)
-        # return random.choice(self.transitions)
-
-    def transition_to_video(self, next_pix):
-        transition = self.choose_transition()
-
-        def after():
-            self.overlay.setOpacity(1.0)
-            self.overlay.show()
-            self.play_video()
-            self.fade_out_overlay()
-
-        transition.run(self.prev_pixmap, next_pix, after)
-
-    def transition_from_video(self, next_pix):
-        transition = self.choose_transition()
-
-        def after_overlay():
-            self.stop_video()
-            transition.run(None, next_pix, self._after_transition)
-
-        self.fade_in_overlay(after_overlay)
+        # return FadeTransition(self)
+        # return CrossFadeTransition(self)
+        # return CardFlipTransition(self)
+        # return SlideCrossFadeTransition(self)
+    
+        return random.choice(self.transitions)
 
     def _after_transition(self):
 
@@ -1440,19 +1375,19 @@ class MediaWindow(QWidget):
         self.logger.write(self.role, f"_next_item() : role={self.role} 終了")
 
     def show_error(self, message):
-        html = f"""
-        <html>
-        <body style="background:black; color:white; text-align:center; font-size:40px;">
-            <h1 style="margin-top:20%;">コンテンツが見つかりません</h1>
-            <p style="font-size:28px;">{message}</p>
-        </body>
-        </html>
-        """
+        if self.webview is not None:
+            self.webview.hide()
 
-        self.webview.setHtml(html)
-        self.webview.show()
-        self.webview.raise_()
-        self.label.hide()
+        self.label.setPixmap(QPixmap())
+        self.label.setTextFormat(Qt.PlainText)
+        self.label.setText(f"コンテンツが見つかりません\n\n{message}")
+        self.label.setAlignment(Qt.AlignCenter)
+        self.label.setWordWrap(True)
+        self.label.setStyleSheet(
+            "background-color: black; color: white; font-size: 28px;"
+        )
+        self.label.show()
+        self.label.raise_()
 
         # ★ エラーモードに入る（以降の進行を止める）
         self.error_mode = True
@@ -1529,16 +1464,6 @@ class MediaWindow(QWidget):
 
         self.overlay_label.setPixmap(scaled)
         self.overlay_label.show()
-
-    def show_image(self, item):
-        overlay_height = self.playlist_overlay.get("height", OVERLAY_HEIGHT) if self.playlist_overlay else 0
-        main_height = self.height() - overlay_height
-
-        pix = QPixmap(item["path"])
-        scaled = pix.scaled(self.width(), main_height, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.main_label.setPixmap(scaled)
-
-        self.apply_overlay()
 
 
 class PairSync:

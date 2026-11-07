@@ -1,0 +1,5 @@
+Program/script:
+powershell.exe
+
+Arguments:
+-ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\tool\gaget_start.ps1"

@@ -1,48 +1,67 @@
-import math
-from PySide6.QtWidgets import QLabel, QGraphicsOpacityEffect
-from PySide6.QtCore import Qt, QTimer, QPropertyAnimation, QSequentialAnimationGroup
-from PySide6.QtGui import QTransform
+from PySide6.QtCore import QPropertyAnimation, QSequentialAnimationGroup, QRect
+
 from .base import TransitionBase
+
 
 class CardFlipTransition(TransitionBase):
     def run(self, old_pix, new_pix, finished):
-
-        self.parent.logger.write(self.parent.role,f"CardFlipTransition start")
-
         parent = self.parent
+        parent.logger.write(parent.role, "CardFlipTransition start")
+
         label = parent.label
-        
-        label.setPixmap(old_pix)
+        generation = getattr(parent, "_pair_generation", 0)
 
-        effect = QGraphicsOpacityEffect(label)
-        label.setGraphicsEffect(effect)
+        parent._transition_running = True
+        parent._transition_new_pix = new_pix
 
-        # 1. old をフェードアウト（カードが裏返るイメージ）
-        fade_out = QPropertyAnimation(effect, b"opacity")
-        fade_out.setDuration(300)
-        fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.0)
+        label.setGeometry(parent.rect())
+        if old_pix is not None:
+            label.setPixmap(old_pix)
+        else:
+            label.setPixmap(parent.black_pixmap)
 
-        # 2. new をフェードイン（カードの裏側）
-        fade_in = QPropertyAnimation(effect, b"opacity")
-        fade_in.setDuration(300)
-        fade_in.setStartValue(0.0)
-        fade_in.setEndValue(1.0)
+        label.show()
+        label.raise_()
+
+        full_rect = label.geometry()
+        collapsed_rect = QRect(
+            full_rect.center().x(),
+            full_rect.y(),
+            1,
+            full_rect.height(),
+        )
+
+        flip_out = QPropertyAnimation(label, b"geometry")
+        flip_out.setDuration(350)
+        flip_out.setStartValue(full_rect)
+        flip_out.setEndValue(collapsed_rect)
+
+        flip_in = QPropertyAnimation(label, b"geometry")
+        flip_in.setDuration(350)
+        flip_in.setStartValue(collapsed_rect)
+        flip_in.setEndValue(full_rect)
 
         group = QSequentialAnimationGroup(label)
-
-        group.addAnimation(fade_out)
-        group.addAnimation(fade_in)
+        group.addAnimation(flip_out)
+        group.addAnimation(flip_in)
+        parent._transition_group = group
 
         def swap_pix():
+            if generation != getattr(parent, "_pair_generation", 0):
+                return
             label.setPixmap(new_pix)
 
-        fade_out.finished.connect(swap_pix)
+        flip_out.finished.connect(swap_pix)
 
         def on_finished():
-            self.parent.logger.write(self.parent.role,f"CardFlipTransition finished")
+            if generation != getattr(parent, "_pair_generation", 0):
+                return
 
-            label.setGraphicsEffect(None)
+            label.setGeometry(full_rect)
+            label.setPixmap(new_pix)
+            if getattr(parent, "_transition_group", None) is group:
+                parent._transition_group = None
+            parent.logger.write(parent.role, "CardFlipTransition finished")
             finished()
 
         group.finished.connect(on_finished)
