@@ -904,6 +904,9 @@ class MediaWindow(QWidget):
             self._set_label_pixmap(self._transition_new_pix, "_after_transition:new_pix")
             self.prev_pixmap = self._transition_new_pix
 
+        if self.playlist_overlay and self.overlay_label.isVisible():
+            self.overlay_label.raise_()
+
         # 次の画像へ進む
         item = self.playlist[self.index]
 
