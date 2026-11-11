@@ -1,4 +1,11 @@
 [
-	{"type": "image", "path": "imagesC/kda_poster.png"
+	{"type": "image", "path": "imagesC/kda_poster.png"},
+	{"overlay": 
+    	{
+	  		"duration": 10000,
+	  		"items": [
+	  			"imagesC/card/notice_board_light.png"
+	  		]
+	 	}
 	}
 ]

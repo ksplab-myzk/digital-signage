@@ -1,4 +1,12 @@
 [
 	{"type": "image", "path": "imagesC/proken1.png"},
-	{"type": "image", "path": "imagesC/proken2.png"}
+	{"type": "image", "path": "imagesC/proken2.png"},
+	{"overlay": 
+    	{
+	  		"duration": 10000,
+	  		"items": [
+	  			"imagesC/card/calendar_sun_light.png"
+	  		]
+	 	}
+	}
 ]
