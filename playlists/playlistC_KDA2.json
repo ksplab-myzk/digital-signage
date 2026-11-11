@@ -1,3 +1,11 @@
 [
-	{"type": "image", "path": "imagesC/KDA_taiken.png"}
+	{"type": "image", "path": "imagesC/KDA_taiken.png"},
+	{"overlay": 
+    	{
+	  		"duration": 10000,
+	  		"items": [
+	  			"imagesC/card/airquality_light.png"
+	  		]
+	 	}
+	}
 ]
