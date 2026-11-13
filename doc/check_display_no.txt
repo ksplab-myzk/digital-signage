@@ -1,0 +1,4 @@
+ディスプレイ番号を調べる
+
+python -c "from PySide6.QtWidgets import QApplication; app=QApplication([]); [print(f'{i}: name={s.name()}, geometry={s.geometry().getRect()}') for i,s in enumerate(app.screens(), 1)]"
+

@@ -18,6 +18,8 @@ def load_config():
     return {
         "mode": config.get("display", "mode", fallback="dual").strip().lower(),
         "fallback_to_single": config.getboolean("display", "fallback_to_single", fallback=True),
+        "display_a": config.getint("display", "display_a", fallback=1),
+        "display_b": config.getint("display", "display_b", fallback=2),
 
         "playlist_folder": config.get("playlist", "folder", fallback="playlists"),
 

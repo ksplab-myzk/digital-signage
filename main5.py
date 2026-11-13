@@ -1858,6 +1858,8 @@ def main():
     mode = cfg["mode"]
     fallback_to_single = cfg["fallback_to_single"]
     allow_single_when_b_missing = cfg["allow_single_when_b_missing"]
+    display_a = cfg["display_a"]
+    display_b = cfg["display_b"]
 
     enable_time_control = cfg["enable_time_control"]
     start_time = cfg["start_time"]
@@ -1933,6 +1935,39 @@ def main():
         print("[WARN] playlistB1.json が無い → single に自動切替")
         mode = "single"
 
+    display_errors = []
+    if display_a < 1:
+        display_errors.append(f"display_a は1以上を指定してください: {display_a}")
+    elif display_a > screen_count:
+        display_errors.append(
+            f"display_a={display_a} は接続中のディスプレイ数({screen_count})を超えています"
+        )
+
+    if mode == "dual":
+        if display_b < 1:
+            display_errors.append(f"display_b は1以上を指定してください: {display_b}")
+        elif display_b > screen_count:
+            display_errors.append(
+                f"display_b={display_b} は接続中のディスプレイ数({screen_count})を超えています"
+            )
+        if display_a == display_b:
+            display_errors.append("デュアルモードでは display_a と display_b に異なる番号を指定してください")
+
+    if display_errors:
+        message = "; ".join(display_errors)
+        print(f"[ERROR] ディスプレイ設定が不正です: {message}")
+        logger.write("ERROR", f"Invalid display configuration: {message}")
+        sys.exit(1)
+
+    logger.write(
+        "",
+        f"[INFO] Display assignment: A={display_a} ({screens[display_a - 1].name()})"
+        + (
+            f", B={display_b} ({screens[display_b - 1].name()})"
+            if mode == "dual" else ""
+        ),
+    )
+
     sync.mode = mode
 
     winA = None
@@ -1947,7 +1982,7 @@ def main():
         winA = MediaWindow(playlistA, app, "A", sync, logger, pixmap_cache, scaled_cache, mode)
         sync.register_windows(winA, None)
 
-        geoA = screens[0].geometry()
+        geoA = screens[display_a - 1].geometry()
         show_signage_window(winA, geoA)
 
         winA.show_media()
@@ -1967,8 +2002,8 @@ def main():
 
         sync.register_windows(winA, winB)
 
-        geoA = screens[0].geometry()
-        geoB = screens[1].geometry()
+        geoA = screens[display_a - 1].geometry()
+        geoB = screens[display_b - 1].geometry()
 
         show_signage_window(winA, geoA)
         show_signage_window(winB, geoB)

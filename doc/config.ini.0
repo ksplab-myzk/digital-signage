@@ -8,6 +8,10 @@
 ;   dual   : 2画面モード
 mode = dual
 
+; A/B を表示するディスプレイ番号（OSの認識順、1始まり）
+display_a = 1
+display_b = 2
+
 ; ② ディスプレイが1枚しか無い場合に single に自動切替する
 fallback_to_single = true
 
