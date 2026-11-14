@@ -1528,6 +1528,12 @@ class PairSync:
         if self.shared_mode != "shared_sub":
             return False
 
+        if self.check_time_range():
+            self.logger.write("", "poll_shared_pair_update() : 終了時間経過 End")
+            self._shared_poll_timer.stop()
+            QApplication.quit()
+            return False
+
         shared_pair = self.check_shared_json()
         if shared_pair is None or shared_pair == self.current_pair:
             return False
