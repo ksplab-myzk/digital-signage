@@ -51,8 +51,11 @@ def load_config():
 # 多重起動チェック
 LOCK_FILE = BASE_DIR / "digital_signage.lock"
 
-def check_single_instance():
+def check_single_instance(logger):
+    logger.write("", f"[Startup] Single-instance check started: lock_file={LOCK_FILE}")
+
     if os.path.exists(LOCK_FILE):
+        logger.write("", f"[Startup] Lock file found: {LOCK_FILE}")
         # 既存の PID を読む
         with open(LOCK_FILE, "r") as f:
             pid = int(f.read().strip())
@@ -60,14 +63,22 @@ def check_single_instance():
         # PID が生きているか確認
         if psutil.pid_exists(pid):
             print("[WARN] 既に起動しています → 多重起動を終了します")
+            logger.write(
+                "WARN",
+                f"[Startup] Another instance is running: pid={pid}; exiting",
+            )
             sys.exit(0)
         else:
             # 死んでいる PID → ロックファイルを削除して再作成
             os.remove(LOCK_FILE)
+            logger.write("", f"[Startup] Removed stale lock file for pid={pid}")
+    else:
+        logger.write("", "[Startup] Lock file not found")
 
     # 新しい PID を書き込む
     with open(LOCK_FILE, "w") as f:
         f.write(str(os.getpid()))
+    logger.write("", f"[Startup] Lock file created: pid={os.getpid()}")
 
 def cleanup_lock_file():
     if os.path.exists(LOCK_FILE):

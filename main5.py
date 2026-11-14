@@ -1853,7 +1853,12 @@ def main():
     # ロガー
     logger = DailyLogger(base_dir="logs", prefix="signage_", level=log_level)
 
-    check_single_instance()
+    logger.write(
+        "",
+        f"[Startup] Application starting: pid={os.getpid()}, "
+        f"platform={platform.system()}, mode={cfg['mode']}, log_level={log_level}",
+    )
+    check_single_instance(logger)
 
     mode = cfg["mode"]
     fallback_to_single = cfg["fallback_to_single"]
