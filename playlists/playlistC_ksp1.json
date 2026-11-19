@@ -5,8 +5,9 @@
     	{
 	  		"duration": 10000,
 	  		"items": [
-	  			"imagesC/card/disaster_info_light.png"
+	  			"imagesC/card/disaster_info_light.png",
+	  			"imagesC/card/taiken_mini.png"
 	  		]
-	 		}
+	 	}
 	}
 ]
