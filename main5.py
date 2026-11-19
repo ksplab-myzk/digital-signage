@@ -209,6 +209,8 @@ class MediaWindow(QWidget):
         self.overlay_label = QLabel(self)
         self.overlay_label.setStyleSheet("background: transparent;")
         self.overlay_label.hide()
+        self.overlay_timer = QTimer(self)
+        self.overlay_timer.timeout.connect(self._next_overlay)
 
         # ESCで終了
         shortcut = QShortcut(QKeySequence("Escape"), self)
@@ -513,9 +515,6 @@ class MediaWindow(QWidget):
             # ★ プレイリスト1周終了を検知
             # if self.index == len(self.playlist) - 1:
             #    self.sync.finished(self.role)   # role = "a" or "b"
-
-            # オーバーレイ(ガジェット)表示開始
-            self.start_overlay()
 
         finally:
             self._showing = False
@@ -1333,9 +1332,7 @@ class MediaWindow(QWidget):
 
             # self.playlist = load_playlist(playlist_file, playlist_folder)
 
-            # シングルモード時のみ overlay を開始
-            if self.mode == "single" and self.playlist_overlay:
-                self.start_overlay()
+            self.start_overlay()
 
             self.index = 0
             self.show_media()
@@ -1426,9 +1423,11 @@ class MediaWindow(QWidget):
 
     def start_overlay(self):
         if not self.playlist_overlay:
+            self.overlay_timer.stop()
             self.overlay_label.hide()
             return
 
+        self.overlay_timer.stop()
         self.overlay_index = 0
         duration = self.playlist_overlay.get("duration", 5000)
 
@@ -1444,8 +1443,6 @@ class MediaWindow(QWidget):
         # 最前面に出す
         self.overlay_label.raise_()
 
-        self.overlay_timer = QTimer(self)
-        self.overlay_timer.timeout.connect(self._next_overlay)
         self.overlay_timer.start(duration)
         
         self._next_overlay()  # 初回表示
@@ -1996,6 +1993,7 @@ def main():
         geoA = screens[display_a - 1].geometry()
         show_signage_window(winA, geoA)
 
+        winA.start_overlay()
         winA.show_media()
         try:
             sys.exit(app.exec())
@@ -2019,6 +2017,8 @@ def main():
         show_signage_window(winA, geoA)
         show_signage_window(winB, geoB)
 
+        winA.start_overlay()
+        winB.start_overlay()
         winA.show_media()
         winB.show_media()
 
