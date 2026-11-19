@@ -946,12 +946,30 @@ class MediaWindow(QWidget):
         self.video_surface.show()
         self.video_surface.raise_()
         win_id = int(self.video_surface.winId())
+        player = self.player
+
+        def attach_video_output():
+            if self.player is not player or media_generation != self._media_generation:
+                return
+
+            try:
+                player.set_hwnd(win_id)
+            except Exception as exc:
+                self.logger.write(
+                    "ERROR",
+                    f"[video] set_hwnd failed index={self.index} hwnd={win_id}: {exc}",
+                )
+                return
+
+            if player.play() == -1:
+                self.logger.write(
+                    "ERROR",
+                    f"[video] play failed index={self.index} hwnd={win_id}",
+                )
 
         # OSごとに埋め込み方法を変える
         if platform.system() == "Windows":
-            self._schedule_content_callback(
-                50, lambda: self.player.set_hwnd(win_id) or self.player.play()
-            )
+            self._schedule_content_callback(50, attach_video_output)
         elif platform.system() == "Linux":
             self._schedule_content_callback(
                 150, lambda: self.player.set_xwindow(win_id) or self.player.play()
@@ -1036,7 +1054,8 @@ class MediaWindow(QWidget):
                 name=f"video-stop-{self.role}-{self.index}",
             )
             worker.thread.start()
-            self._advance_after_video_end()
+            if platform.system() != "Windows":
+                self._advance_after_video_end()
             return
 
         self._schedule_content_callback(200, self._check_video_end)
@@ -1054,6 +1073,12 @@ class MediaWindow(QWidget):
             f"[video] async stop finished media_generation={media_generation} "
             f"pair_generation={pair_generation}",
         )
+        if platform.system() == "Windows" and (
+            media_generation == self._media_generation
+            and pair_generation == self._pair_generation
+            and self.player is None
+        ):
+            self._advance_after_video_end()
 
     def _on_video_stop_stage(self, stage):
         self.logger.write(self.role, f"[video] async stop {stage}")
